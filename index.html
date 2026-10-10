@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#073b2e">
+<title>BHa njangi</title>
+<meta name="application-name" content="BHa njangi">
+<meta name="apple-mobile-web-app-title" content="BHa njangi">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23073b2e'/%3E%3Cpath d='M16 6l2.9 6 6.6.9-4.8 4.6 1.2 6.5L16 20.7 10.1 24l1.2-6.5-4.8-4.6 6.6-.9z' fill='%23f2c230'/%3E%3C/svg%3E">
+<!-- Speed: start talking to Google's servers while the page is still opening -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
+<style>
+:root{
+  --paper:#eef3f0; --card:#ffffff; --green:#00674f; --deep:#073b2e; --star:#f2c230;
+  --red:#c4261d; --ink:#14211b; --mute:#5d6b63; --line:#d5e0da; --tint:#e3efe9; --redtint:#fbe9e7;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+h1,h2,h3{margin:0;line-height:1.2;letter-spacing:-.01em}
+h2{font-size:1.25rem;font-weight:800}
+h3{font-size:1.05rem;font-weight:700}
+p{margin:.25rem 0}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--star);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* header */
+.top{position:sticky;top:0;z-index:20;background:var(--deep);color:#fff;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:4px solid var(--star)}
+.brand{font-weight:800;font-size:1.05rem;letter-spacing:-.01em}
+.who{font-size:.85rem;opacity:.8}
+.top .offline{flex:0 0 calc(100% + 32px);margin:0 -16px -12px;background:var(--red);color:#fff;text-align:center;font-weight:700;font-size:.82rem;padding:6px 12px}
+
+/* nav */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:#fff;border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;min-width:0;border:0;background:none;padding:14px 2px 13px;font-size:.72rem;font-weight:600;color:var(--mute);border-top:3px solid transparent;margin-top:-1px}
+.nav button.on{color:var(--green);border-top-color:var(--green);font-weight:800}
+
+main{max-width:720px;margin:0 auto;padding:16px}
+.loading{padding:40px 0;text-align:center;color:var(--mute)}
+
+/* cards and rows */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.card.err{background:var(--redtint);border-color:#efc3bd;color:#7a1710}
+.card.ok{background:var(--tint);border-color:#b9d6c9}
+.section-title{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 2px 10px}
+.muted{color:var(--mute);font-size:.9rem}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat b{display:block;font-size:1.2rem;font-weight:800}
+.stat span{font-size:.85rem;color:var(--mute)}
+.stat.red b{color:var(--red)}
+
+/* the passbook cover */
+.acard{position:relative;overflow:hidden;background:var(--deep);color:#fff;border-radius:18px;padding:20px 20px 18px;margin-bottom:14px;border-left:10px solid var(--green)}
+.acard svg{position:absolute;right:-14px;top:-14px;width:120px;height:120px;opacity:.14}
+.acard .lbl{font-size:.8rem;opacity:.7}
+.acard .num{font-size:1.6rem;font-weight:800;letter-spacing:.14em;margin:2px 0 14px}
+.acard .name{font-size:1.05rem;font-weight:700}
+.acard .bal{font-size:2rem;font-weight:800;color:var(--star);letter-spacing:-.02em;margin-top:2px}
+
+/* ledger lines */
+.ledger{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.line{display:flex;align-items:flex-end;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.line:last-child{border-bottom:0}
+.line .l{min-width:0}
+.line .l b{display:block;font-weight:700}
+.line .l small{display:block;color:var(--mute);font-size:.82rem}
+.line .dots{flex:1;border-bottom:2px dotted #b9c8c0;margin-bottom:6px;min-width:12px}
+.line .r{text-align:right;font-weight:800;white-space:nowrap}
+.line .r small{display:block;font-weight:500;color:var(--mute);font-size:.8rem}
+
+.badge{display:inline-block;font-size:.75rem;font-weight:700;padding:2px 9px;border-radius:99px;margin-left:6px;vertical-align:middle}
+.b-ok{background:var(--tint);color:var(--green)}
+.b-no{background:var(--redtint);color:var(--red)}
+.b-mute{background:#edf0ee;color:var(--mute)}
+
+/* forms */
+label{display:block;font-size:.88rem;font-weight:600;margin:0 0 12px;color:var(--ink)}
+input,select,textarea{display:block;width:100%;margin-top:5px;padding:12px;font:inherit;font-size:16px;border:1.5px solid #b9c8c0;border-radius:10px;background:#fff;color:var(--ink);min-height:48px}
+textarea{min-height:100px;resize:vertical}
+input:focus,select:focus,textarea:focus{border-color:var(--green);outline:none;box-shadow:0 0 0 3px rgba(0,103,79,.18)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:10px;padding:12px 18px;min-height:46px;font-weight:700;background:var(--tint);color:var(--deep)}
+.btn.primary{background:var(--green);color:#fff}
+.btn.danger{background:var(--redtint);color:var(--red)}
+.btn.ghost{background:transparent;border:1.5px solid #b9c8c0;color:var(--ink)}
+.btn.small{min-height:36px;padding:6px 12px;font-size:.85rem}
+.btn.light{background:rgba(255,255,255,.14);color:#fff;min-height:36px;padding:6px 12px;font-size:.85rem}
+.btn.block{display:flex;width:100%}
+.btn:disabled{opacity:.55}
+.link{background:none;border:0;color:var(--green);font-weight:700;padding:10px;text-decoration:underline}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chips{display:flex;gap:8px;margin-bottom:12px}
+.chip{border:1.5px solid #b9c8c0;background:#fff;border-radius:99px;padding:7px 16px;font-weight:700;font-size:.88rem;color:var(--mute)}
+.chip.on{background:var(--green);border-color:var(--green);color:#fff}
+
+/* sunday entry */
+.srow{display:grid;grid-template-columns:1fr 130px;gap:8px;padding:12px 14px;background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+.srow .who2 b{display:block}
+.srow .who2 span{font-size:.82rem;color:var(--mute)}
+.srow select,.srow input{margin-top:0;min-height:44px;padding:8px 10px}
+.srow .amt{grid-column:2}
+.srow.rec{border-color:#b9d6c9;background:#f7fbf9}
+.savebar{position:sticky;bottom:calc(66px + env(safe-area-inset-bottom));padding-top:8px;background:linear-gradient(transparent,var(--paper) 40%)}
+
+/* login */
+.login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--deep)}
+.login-card{width:100%;max-width:400px;background:#fff;border-radius:20px;padding:26px 22px;border-top:8px solid var(--star)}
+.login-card h1{font-size:1.5rem;font-weight:800;margin:8px 0 2px}
+.login-card .sub{color:var(--mute);margin-bottom:20px}
+.star{width:44px;height:44px}
+
+/* modal and toast */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(7,59,46,.55);display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:520px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:20px 18px calc(18px + env(safe-area-inset-bottom));animation:up .18s ease-out}
+.sheet h3{margin-bottom:14px;font-size:1.15rem}
+.sheet .actions{justify-content:flex-end}
+@keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.cred{background:var(--tint);border-radius:12px;padding:14px;margin:6px 0 14px;font-size:1.1rem}
+.cred b{font-size:1.4rem;letter-spacing:.12em}
+#toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);background:var(--deep);color:#fff;padding:12px 18px;border-radius:12px;max-width:90%;font-weight:600;opacity:0;pointer-events:none;transition:.2s;z-index:60;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%)}
+#toast.bad{background:var(--red)}
+
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{font-size:.8rem;color:var(--mute);font-weight:700}
+tfoot td{font-weight:800;border-top:2px solid var(--ink)}
+.scroll{overflow-x:auto}
+
+.nav button{position:relative}
+.nav button.dot::after{content:attr(data-n);position:absolute;top:4px;left:calc(50% + 12px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font-size:.68rem;font-weight:800;line-height:18px}
+details.how{margin-top:12px}
+details.how summary{cursor:pointer;font-weight:700;color:var(--green);padding:8px 0;min-height:40px}
+.verdict{border-radius:10px;padding:10px 12px;margin-top:10px;font-weight:600}
+.verdict.good{background:var(--tint);color:var(--deep)}
+.verdict.bad{background:var(--redtint);color:#7a1710}
+.verdict p{margin:2px 0}
+.note{font-size:.88rem;color:var(--mute);margin-top:10px}
+hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{.top,.nav,.noprint,#toast{display:none!important}body{background:#fff;padding:0}.card{border:0;padding:0}}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading" style="padding-top:30vh">Loading...</div></div>
+<div id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, orderBy, limit, writeBatch, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCKkk1hkBF4pPViUVZwc9hg_PRQ8X9qXF8",
+  authDomain: "bamunka-youth-njangi.firebaseapp.com",
+  projectId: "bamunka-youth-njangi",
+  storageBucket: "bamunka-youth-njangi.firebasestorage.app",
+  messagingSenderId: "384503623806",
+  appId: "1:384503623806:web:4a5407ee09a5bf6681282f"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+// The phone keeps a copy of the data. If the internet drops, what the secretary
+// enters is kept on the phone and sent by itself when the internet returns.
+let db;
+try {
+  if (typeof indexedDB === "undefined") throw new Error("no storage");
+  db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+} catch (e) { db = getFirestore(app); }
+// A second, separate connection used only to create member logins,
+// so the secretary stays signed in while a new member is added.
+// It is made only when needed, so the app opens faster.
+let _ca;
+const creatorAuth = () => _ca || (_ca = getAuth(initializeApp(firebaseConfig, "creator")));
+
+const DOMAIN = "bamunkanjangi.com";
+const STAR = `<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l3.6 7.4 8.1 1.1-5.9 5.7 1.5 8L16 21.3 8.7 25.2l1.5-8-5.9-5.7 8.1-1.1z" fill="#f2c230"/></svg>`;
+
+/* ---------- small helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = v => { const n = Number(String(v ?? "").replace(/[^\d.]/g, "")); return isFinite(n) ? n : 0; };
+const money = n => Math.round(Number(n) || 0).toLocaleString("en-US").replace(/,/g, " ") + " FCFA";
+const pad2 = n => String(n).padStart(2, "0");
+const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const today = () => ymd(new Date());
+const thisYear = () => new Date().getFullYear();
+function lastSunday() { const d = new Date(); d.setDate(d.getDate() - d.getDay()); return ymd(d); }
+function isSunday(s) { if (!s) return false; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).getDay() === 0; }
+function pretty(s) { if (!s) return ""; const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+function stamp(ms) { return new Date(ms).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+const paidSum = a => (a || []).reduce((s, p) => s + (+p.amount || 0), 0);
+const lastPay = a => (a || []).map(p => p.date).sort().pop() || "";
+const fineBalance = f => Math.max(0, (+f.amount || 0) - paidSum(f.payments));
+const normAcct = v => { v = String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); if (/^\d+$/.test(v)) v = "BYN" + v.padStart(4, "0"); return v; };
+// Version 1 is the first PIN. After a reset the login becomes BYN0001-2, then -3 and so on.
+const emailFor = (a, v = 1) => a.toLowerCase() + (v > 1 ? "-" + v : "") + "@" + DOMAIN;
+const spaced = a => a.replace(/^BYN/, "BYN ");
+function randomPin() { return String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, "0"); }
+function loanCode() { const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; return "LN-" + [...crypto.getRandomValues(new Uint8Array(6))].map(x => A[x % A.length]).join(""); }
+const byId = list => Object.fromEntries(list.map(x => [x.id, x]));
+
+/* ---------- saving with a weak network ---------- */
+// If the internet is slow or gone, the write stays on the phone and goes out later.
+// After 5 seconds we stop waiting and carry on, so the app never freezes.
+function settle(p) {
+  p.catch(e => console.error("write", e));
+  return new Promise((res, rej) => {
+    const t = setTimeout(() => res("later"), 5000);
+    p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); });
+  });
+}
+const sent = (msg, r) => toast(r === "later" ? msg + " Saved on this phone. It will send when the internet returns." : msg);
+function netState() { const n = $("#net"); if (n) n.hidden = navigator.onLine; }
+addEventListener("online", netState);
+addEventListener("offline", netState);
+
+/* ---------- change history ---------- */
+// Every change the secretary makes is written to a list that cannot be edited.
+function histRef() { return doc(collection(db, "history")); }
+function histData(type, text) { return { at: Date.now(), date: today(), by: (S.user && S.user.email) || "", type, text }; }
+function logIt(type, text) { try { setDoc(histRef(), histData(type, text)).catch(e => console.error("history", e)); } catch (e) { /* history is best effort */ } }
+
+/* ---------- backup reminder ---------- */
+function lastBackup() { try { return localStorage.getItem("bynBackup") || ""; } catch (e) { return ""; } }
+function backupAge() {
+  const l = lastBackup(); if (!l) return 999;
+  const [y, m, d] = l.split("-").map(Number);
+  return Math.floor((Date.now() - new Date(y, m - 1, d).getTime()) / 86400000);
+}
+
+/* ---------- loan engine ---------- */
+// Interest is 5% of everything owed, added on the last Sunday of each month.
+// Payments go to interest first, then to the loan itself.
+const RATE = 0.05;
+function lastSundayOf(y, m) { const d = new Date(y, m + 1, 0); d.setDate(d.getDate() - d.getDay()); return ymd(d); }
+function interestDates(from, to) {
+  const out = [];
+  if (!from || !to || to <= from) return out;
+  let [y, m] = from.split("-").map(Number); m -= 1;
+  const [ty, tm] = to.split("-").map(Number);
+  for (let n = 0; n < 1200 && (y < ty || (y === ty && m <= tm - 1)); n++) {
+    const d = lastSundayOf(y, m);
+    if (d > from && d <= to) out.push(d);
+    m++; if (m > 11) { m = 0; y++; }
+  }
+  return out;
+}
+function nextInterestDate(asOf) {
+  let [y, m] = asOf.split("-").map(Number); m -= 1;
+  for (let n = 0; n < 3; n++) {
+    const d = lastSundayOf(y, m);
+    if (d > asOf) return d;
+    m++; if (m > 11) { m = 0; y++; }
+  }
+}
+function addMonths(s, n) {
+  const [y, m, d] = s.split("-").map(Number);
+  const t = new Date(y, m - 1 + n, 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  t.setDate(Math.min(d, last));
+  return ymd(t);
+}
+function loanState(l, asOf) {
+  let p = +l.principal || 0, i = 0, charged = 0, paid = 0;
+  const ev = [], log = [], intPaidYear = {};
+  (l.payments || []).forEach(x => { if (x.date <= asOf) ev.push({ date: x.date, t: 0, amt: +x.amount || 0 }); });
+  interestDates(l.date, asOf).forEach(d => ev.push({ date: d, t: 1 }));
+  ev.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.t - b.t);
+  for (const e of ev) {
+    if (e.t === 0) {
+      const toI = Math.min(e.amt, i); i -= toI;
+      const toP = Math.min(e.amt - toI, p); p -= toP;
+      paid += toI + toP;
+      const y = e.date.slice(0, 4); intPaidYear[y] = (intPaidYear[y] || 0) + toI;
+      log.push({ date: e.date, type: "pay", amount: toI + toP, owed: p + i });
+    } else {
+      if (p + i <= 0) continue;
+      const c = Math.round(RATE * (p + i)); i += c; charged += c;
+      log.push({ date: e.date, type: "int", amount: c, owed: p + i });
+    }
+  }
+  return { principal: p, interest: i, owed: p + i, charged, paid, log, intPaidYear };
+}
+// Free savings = saved this year, minus what the member owes, minus what they back.
+function freeInfo(mem, loans, asOf, year) {
+  const saved = mem ? ((mem.totals || {})[year] || 0) : 0;
+  let own = 0, back = 0;
+  for (const l of loans) {
+    const o = loanState(l, asOf).owed; if (o <= 0 || !mem) continue;
+    if (l.acct === mem.id) own += o;
+    if (l.gAcct === mem.id) back += o;
+  }
+  return { saved, own, back, free: Math.max(0, saved - own - back) };
+}
+const REQ_LABEL = { awaiting_guarantor: ["Waiting for guarantor", "b-mute"], ready: ["Guarantor agreed", "b-ok"], approved: ["Approved", "b-ok"], declined: ["Declined", "b-no"], declined_guarantor: ["Guarantor declined", "b-no"], cancelled: ["Cancelled", "b-mute"] };
+const reqBadge = s => { const x = REQ_LABEL[s] || [s, "b-mute"]; return `<span class="badge ${x[1]}">${x[0]}</span>`; };
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+async function refreshBadges() {
+  try {
+    const counts = {};
+    if (S.role === "member") {
+      const s = await getDocs(query(collection(db, "loanRequests"), where("gAcct", "==", S.acct)));
+      counts.guarantee = s.docs.filter(d => d.data().status === "awaiting_guarantor").length;
+    } else {
+      const [a, b] = await Promise.all([
+        getDocs(query(collection(db, "loanRequests"), where("status", "==", "ready"))),
+        getDocs(query(collection(db, "reports"), where("status", "==", "open")))
+      ]);
+      counts.loans = a.size; counts.reports = b.size;
+    }
+    $$(".nav button").forEach(btn => { const n = counts[btn.dataset.tab] || 0; btn.dataset.n = n; btn.classList.toggle("dot", n > 0); });
+  } catch (e) { /* badges are optional */ }
+}
+
+
+let toastTimer;
+function toast(msg, bad) {
+  const t = $("#toast"); t.textContent = msg; t.className = "show" + (bad ? " bad" : "");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = "", 4200);
+}
+function friendly(e) {
+  const c = (e && e.code) || "";
+  if (c.includes("permission-denied")) return "Not allowed. You may need to log in again, or the security rules are not set right.";
+  if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found", "auth/invalid-email"].includes(c)) return "Wrong login details. Check and try again, or tap Trouble logging in.";
+  if (c === "auth/too-many-requests") return "Too many tries. Please wait a few minutes.";
+  if (c === "auth/network-request-failed" || c.includes("unavailable")) return "No internet connection.";
+  if (c === "auth/requires-recent-login") return "Please log out and log in again, then try once more.";
+  if (c === "auth/weak-password") return "That PIN is too weak. Use 6 digits.";
+  return (e && e.message) || "Something went wrong.";
+}
+
+function modal(title, body, onSubmit, label = "Save") {
+  const w = document.createElement("div"); w.className = "modal";
+  w.innerHTML = `<form class="sheet"><h3>${esc(title)}</h3>${body}<div class="actions"><button type="button" class="btn ghost" data-x>Cancel</button><button class="btn primary">${esc(label)}</button></div></form>`;
+  document.body.appendChild(w);
+  const close = () => w.remove();
+  $("[data-x]", w).onclick = close;
+  w.addEventListener("click", e => { if (e.target === w) close(); });
+  $("form", w).onsubmit = async e => {
+    e.preventDefault();
+    const b = $("button.primary", w); b.disabled = true;
+    try { await onSubmit(new FormData(e.target)); close(); }
+    catch (err) { toast(friendly(err), true); b.disabled = false; }
+  };
+  return w;
+}
+function info(title, body) {
+  const w = document.createElement("div"); w.className = "modal";
+  w.innerHTML = `<div class="sheet"><h3>${esc(title)}</h3>${body}<div class="actions"><button class="btn primary" data-x>Done</button></div></div>`;
+  document.body.appendChild(w);
+  $("[data-x]", w).onclick = () => w.remove();
+  return w;
+}
+function memberOptions() {
+  return `<datalist id="ml">${S.members.filter(m => m.active !== false).map(m => `<option value="${esc(m.id)} - ${esc(m.name)}"></option>`).join("")}</datalist>`;
+}
+function pickMember(v) {
+  const first = String(v || "").trim().split(/\s+/)[0];
+  const id = normAcct(first);
+  return S.members.find(m => m.id === id) || null;
+}
+
+/* ---------- state ---------- */
+const S = { user: null, role: null, acct: null, ver: 1, me: null, members: [], mAt: 0, tab: null, sunday: null, more: "year" };
+
+// The member list is kept for 30 seconds so moving between tabs is instant.
+async function loadMembers(force) {
+  if (!force && S.members.length && Date.now() - S.mAt < 30000) return;
+  const s = await getDocs(collection(db, "members"));
+  S.members = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.id.localeCompare(b.id));
+  S.mAt = Date.now();
+}
+
+/* ---------- login ---------- */
+function loginView() {
+  let sec = false;
+  $("#app").innerHTML = `
+  <div class="login"><div class="login-card">
+    <div class="star">${STAR}</div>
+    <h1>BHa Njangi</h1>
+    <p class="sub" style="margin-bottom:4px"><b>(Bamunka Njangi)</b></p>
+    <p class="sub">Your savings, clear and safe.</p>
+    <form id="lf">
+      <div id="mf">
+        <label>Account number<input name="acct" autocomplete="username" autocapitalize="characters" placeholder="BYN0001" required></label>
+        <label>PIN<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="6 digits" required></label>
+      </div>
+      <div id="sf" hidden>
+        <label>Secretary email<input name="email" type="email" autocomplete="username"></label>
+        <label>Password<input name="pass" type="password" autocomplete="current-password"></label>
+      </div>
+      <button class="btn primary block">Log in</button>
+    </form>
+    <div style="text-align:center;margin-top:8px"><button class="link" id="swap" type="button">Secretary login</button><br><button class="link" id="help" type="button">Trouble logging in?</button></div>
+    <p class="muted" style="text-align:center;font-size:.78rem;margin-top:10px">Created by Ntushen Hans Kunda</p>
+  </div></div>`;
+  const setMode = () => {
+    $("#mf").hidden = sec; $("#sf").hidden = !sec;
+    $$("#mf input").forEach(i => i.required = !sec);
+    $$("#sf input").forEach(i => i.required = sec);
+    $("#swap").textContent = sec ? "Member login" : "Secretary login";
+  };
+  $("#swap").onclick = () => { sec = !sec; setMode(); };
+  $("#help").onclick = () => {
+    const w = info("Trouble logging in?", `
+      <p><b>Member: forgot or wrong PIN</b></p>
+      <p class="muted">Your account number looks like BYN0001 and your PIN has 6 digits. If it still does not work, ask the secretary to reset your PIN. The secretary will give you a new PIN. Once you are in, you can choose your own PIN with the Change my PIN button on the Home tab.</p>
+      <hr class="sep">
+      <p><b>Secretary: forgot password</b></p>
+      <label>Secretary email<input id="rem" type="email" autocomplete="email"></label>
+      <button class="btn block" id="rsend" type="button">Send reset link</button>
+      <p class="note">Look in Inbox and Spam. If you can no longer open that email, open the Firebase website, then Authentication, then Users, and reset the password there.</p>`);
+    $("#rsend", w).onclick = async () => {
+      const em = $("#rem", w).value.trim().toLowerCase();
+      if (!em || em.endsWith("@" + DOMAIN)) return toast("Type the secretary's real email address.", true);
+      try { await sendPasswordResetEmail(auth, em); }
+      catch (e) { if ((e.code || "").includes("network")) return toast(friendly(e), true); }
+      toast("If this email is registered, a reset link has been sent. Check Inbox and Spam.");
+    };
+  };
+  $("#lf").onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target), b = $("#lf .primary"); b.disabled = true;
+    try {
+      if (sec) await signInWithEmailAndPassword(auth, String(f.get("email")).trim().toLowerCase(), String(f.get("pass")));
+      else {
+        const acct = normAcct(f.get("acct")), pin = String(f.get("pin")).trim();
+        // find out which PIN version this account is on (1 unless it was reset)
+        let v = 1;
+        try { const d = await getDoc(doc(db, "pinVersions", acct)); if (d.exists()) v = +d.data().v || 1; } catch (err) { v = 1; }
+        await signInWithEmailAndPassword(auth, emailFor(acct, v), pin);
+      }
+    } catch (err) { toast(friendly(err), true); b.disabled = false; }
+  };
+}
+
+onAuthStateChanged(auth, async user => {
+  if (!user) { S.user = null; S.me = null; S.members = []; S.mAt = 0; loginView(); return; }
+  S.user = user;
+  const em = (user.email || "").toLowerCase();
+  if (em.endsWith("@" + DOMAIN)) {
+    const local = em.split("@")[0];
+    S.role = "member"; S.acct = local.toUpperCase().replace(/-\d+$/, "");
+    S.ver = +((local.match(/-(\d+)$/) || [])[1] || 1);
+    try {
+      const d = await getDoc(doc(db, "members", S.acct));
+      if (!d.exists()) throw new Error("Your account is not registered yet. Please contact the secretary.");
+      if (S.ver < (d.data().pinVer || 1)) throw new Error("Your PIN was reset. Please log in with your new PIN.");
+      S.me = { id: d.id, ...d.data() };
+    } catch (e) { toast(friendly(e), true); await signOut(auth); return; }
+    S.tab = "home";
+  } else { S.role = "secretary"; S.tab = "sunday"; }
+  shell(); go(S.tab);
+});
+
+const TABS = {
+  member: [["home", "Home"], ["everyone", "Everyone"], ["fines", "Fines"], ["loan", "Loan"], ["guarantee", "Guarantee"], ["report", "Report"]],
+  secretary: [["sunday", "Sunday"], ["members", "Members"], ["fines", "Fines"], ["loans", "Loans"], ["reports", "Reports"], ["yearend", "More"]]
+};
+function shell() {
+  $("#app").innerHTML = `
+  <header class="top"><div><div class="brand">BHa Njangi</div><div class="who">${S.role === "secretary" ? "Secretary" : esc(S.me.name)}</div></div><button class="btn light" id="out">Log out</button>
+    <div id="net" class="offline" hidden>No internet. What you enter is kept on this phone and sent when the internet returns.</div></header>
+  <main id="main"></main>
+  <nav class="nav">${TABS[S.role].map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join("")}</nav>`;
+  $("#out").onclick = () => signOut(auth);
+  $$(".nav button").forEach(b => b.onclick = () => go(b.dataset.tab));
+  netState();
+}
+async function go(tab) {
+  S.tab = tab;
+  $$(".nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  const m = document.createElement("div");
+  m.innerHTML = '<div class="loading">Loading...</div>';
+  $("#main").replaceChildren(m);
+  window.scrollTo(0, 0);
+  refreshBadges();
+  try { await VIEWS[tab](m); }
+  catch (e) { console.error(e); m.innerHTML = `<div class="card err">${esc(friendly(e))}</div>`; }
+}
+
+const VIEWS = {};
+
+/* ================= MEMBER VIEWS ================= */
+VIEWS.home = async m => {
+  const [sv, fn] = await Promise.all([
+    getDocs(query(collection(db, "savings"), where("acct", "==", S.acct))),
+    getDocs(collection(db, "fines"))
+  ]);
+  const recs = sv.docs.map(d => d.data()).sort((a, b) => b.date.localeCompare(a.date));
+  const owed = fn.docs.map(d => d.data()).filter(f => f.acct === S.acct).reduce((s, f) => s + fineBalance(f), 0);
+  const years = [...new Set([thisYear(), ...recs.map(r => +r.date.slice(0, 4))])].sort((a, b) => b - a);
+  let year = thisYear();
+  const draw = () => {
+    const yr = recs.filter(r => +r.date.slice(0, 4) === year);
+    const total = yr.reduce((s, r) => s + (+r.amount || 0), 0);
+    const present = yr.filter(r => r.present).length;
+    m.innerHTML = `
+      <section class="acard">${STAR}
+        <div class="lbl">Account number</div>
+        <div class="num">${esc(spaced(S.acct))}</div>
+        <div class="name">${esc(S.me.name)}</div>
+        <div class="lbl" style="margin-top:14px">Saved in ${year}</div>
+        <div class="bal">${money(total)}</div>
+      </section>
+      <div class="stats">
+        <div class="stat"><b>${present}</b><span>Sundays present in ${year}</span></div>
+        <div class="stat ${owed ? "red" : ""}"><b>${money(owed)}</b><span>Fines still owed</span></div>
+      </div>
+      <div class="section-title"><h2>My savings</h2>
+        <select id="yr" style="width:auto;margin:0;min-height:40px;padding:6px 10px">${years.map(y => `<option ${y === year ? "selected" : ""}>${y}</option>`).join("")}</select></div>
+      <div class="ledger">${yr.length ? yr.map(r => `
+        <div class="line"><div class="l"><b>${pretty(r.date)}</b><small>${r.present ? "Present" : "Absent"}${r.note ? " - " + esc(r.note) : ""}</small></div><span class="dots"></span><div class="r">${r.amount ? money(r.amount) : "No saving"}</div></div>`).join("")
+        : '<div class="line"><div class="l muted">Nothing recorded for this year yet.</div></div>'}</div>
+      <p class="muted" style="margin-top:12px">Something looks wrong? Open the Report tab and tell the secretary.</p>
+      <button class="btn ghost block" id="chpin" style="margin-top:16px">Change my PIN</button>
+      <p class="muted" style="text-align:center;font-size:.78rem;margin-top:18px">BHa Njangi (Bamunka Njangi)<br>Created by Ntushen Hans Kunda</p>`;
+    $("#yr", m).onchange = e => { year = +e.target.value; draw(); };
+    $("#chpin", m).onclick = () => modal("Change my PIN", `
+      <label>Current PIN<input name="o" type="password" inputmode="numeric" required></label>
+      <label>New PIN (6 digits)<input name="n" type="password" inputmode="numeric" maxlength="6" required></label>`, async f => {
+      const n = String(f.get("n")).trim();
+      if (!/^\d{6}$/.test(n)) throw new Error("The PIN must be exactly 6 digits.");
+      await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, String(f.get("o")).trim()));
+      await updatePassword(auth.currentUser, n);
+      toast("Your PIN was changed. Use the new PIN next time.");
+    }, "Change PIN");
+  };
+  draw();
+};
+
+VIEWS.everyone = async m => {
+  let date = S.sunday || lastSunday(), recs = {};
+  m.innerHTML = `
+    <div class="card"><label>Sunday<input type="date" id="dt" value="${date}"></label>
+    <input id="q" placeholder="Search by name or number" style="margin-top:0"></div>
+    <div id="sum" class="stats"></div><div id="list"></div>`;
+  const draw = () => {
+    const q = $("#q", m).value.trim().toLowerCase();
+    const yr = date.slice(0, 4);
+    const all = S.members.filter(x => x.active !== false || recs[x.id]);
+    const present = all.filter(x => recs[x.id] && recs[x.id].present).length;
+    const absent = all.filter(x => recs[x.id] && !recs[x.id].present).length;
+    const sum = Object.values(recs).reduce((s, r) => s + (+r.amount || 0), 0);
+    $("#sum", m).innerHTML = `<div class="stat"><b>${present} present, ${absent} absent</b><span>${pretty(date)}</span></div><div class="stat"><b>${money(sum)}</b><span>Saved this Sunday</span></div>`;
+    const rows = all.filter(x => !q || x.name.toLowerCase().includes(q) || x.id.toLowerCase().includes(q));
+    $("#list", m).innerHTML = `<div class="ledger">${rows.map(x => {
+      const r = recs[x.id];
+      const badge = r ? (r.present ? '<span class="badge b-ok">Present</span>' : '<span class="badge b-no">Absent</span>') : '<span class="badge b-mute">Not recorded</span>';
+      return `<div class="line"><div class="l"><b>${esc(x.name)}${badge}</b><small>${esc(x.id)}, saved ${money((x.totals || {})[yr] || 0)} in ${yr}</small></div><span class="dots"></span><div class="r">${r && r.amount ? money(r.amount) : "-"}</div></div>`;
+    }).join("") || '<div class="line"><div class="l muted">No members found.</div></div>'}</div>`;
+  };
+  const load = async () => {
+    date = $("#dt", m).value; S.sunday = date;
+    if (!isSunday(date)) { $("#sum", m).innerHTML = ""; $("#list", m).innerHTML = '<div class="card err">Please choose a Sunday.</div>'; return; }
+    const [s] = await Promise.all([getDocs(query(collection(db, "savings"), where("date", "==", date))), loadMembers()]);
+    recs = {}; s.docs.forEach(d => { const x = d.data(); recs[x.acct] = x; });
+    draw();
+  };
+  $("#dt", m).onchange = load; $("#q", m).oninput = draw;
+  await load();
+};
+
+function fineCard(f, sec) {
+  const bal = fineBalance(f), paid = paidSum(f.payments), lp = lastPay(f.payments);
+  return `<div class="line"><div class="l"><b>${esc(f.name)}${bal ? '<span class="badge b-no">Owing</span>' : '<span class="badge b-ok">Cleared</span>'}</b>
+    <small>${esc(f.acct)}, ${esc(f.reason)}, fined on ${pretty(f.date)}</small>
+    <small>Fine ${money(f.amount)}, paid ${money(paid)}${lp ? " (last on " + pretty(lp) + ")" : ""}</small>
+    ${sec ? `<div class="actions"><button class="btn small" data-pay="${f.id}">Record payment</button><button class="btn small danger" data-del="${f.id}">Delete</button></div>` : ""}</div>
+    <span class="dots"></span><div class="r">${money(bal)}<small>left</small></div></div>`;
+}
+VIEWS.fines = async m => {
+  const sec = S.role === "secretary";
+  const [, s] = await Promise.all([sec ? loadMembers() : null, getDocs(collection(db, "fines"))]);
+  let fines = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.date.localeCompare(a.date));
+  let mine = false;
+  const draw = () => {
+    const list = mine ? fines.filter(f => f.acct === S.acct) : fines;
+    const tot = list.reduce((a, f) => a + (+f.amount || 0), 0), paid = list.reduce((a, f) => a + paidSum(f.payments), 0);
+    m.innerHTML = `
+      ${sec ? '<button class="btn primary block" id="add" style="margin-bottom:14px">Add a fine</button>' :
+        `<div class="chips"><button class="chip ${mine ? "" : "on"}" data-f="all">Everyone</button><button class="chip ${mine ? "on" : ""}" data-f="mine">Only mine</button></div>`}
+      <div class="stats"><div class="stat"><b>${money(tot)}</b><span>Total fines</span></div><div class="stat red"><b>${money(tot - paid)}</b><span>Still unpaid</span></div></div>
+      <div class="ledger">${list.map(f => fineCard(f, sec)).join("") || '<div class="line"><div class="l muted">No fines recorded.</div></div>'}</div>`;
+    $$("[data-f]", m).forEach(b => b.onclick = () => { mine = b.dataset.f === "mine"; draw(); });
+    if (!sec) return;
+    $("#add", m).onclick = () => modal("Add a fine", `
+      <label>Member<input name="m" list="ml" required placeholder="Type name or number" autocomplete="off"></label>${memberOptions()}
+      <label>Reason<input name="reason" required placeholder="e.g. Late to meeting"></label>
+      <label>Amount (FCFA)<input name="amt" inputmode="numeric" required></label>
+      <label>Date<input name="date" type="date" value="${today()}" required></label>`, async f => {
+      const mem = pickMember(f.get("m")); if (!mem) throw new Error("Choose a member from the list.");
+      const amt = num(f.get("amt")); if (amt <= 0) throw new Error("Enter the fine amount.");
+      const data = { acct: mem.id, name: mem.name, reason: String(f.get("reason")).trim(), amount: amt, date: f.get("date"), payments: [] };
+      const ref = doc(collection(db, "fines"));
+      const bt = writeBatch(db);
+      bt.set(ref, data);
+      bt.set(histRef(), histData("fine", `Fine added: ${mem.name} (${mem.id}), ${money(amt)}, "${data.reason}", dated ${pretty(data.date)}`));
+      const r = await settle(bt.commit());
+      fines.unshift({ id: ref.id, ...data });
+      fines.sort((a, b) => b.date.localeCompare(a.date)); draw(); sent("Fine added.", r);
+    }, "Add fine");
+    $$("[data-pay]", m).forEach(b => b.onclick = () => {
+      const fine = fines.find(x => x.id === b.dataset.pay);
+      modal("Record fine payment", `<p class="muted">${esc(fine.name)} still owes ${money(fineBalance(fine))}.</p>
+        <label>Amount paid<input name="amt" inputmode="numeric" value="${fineBalance(fine)}" required></label>
+        <label>Date paid<input name="date" type="date" value="${today()}" required></label>`, async f => {
+        const amt = num(f.get("amt")), date = f.get("date");
+        if (amt <= 0) throw new Error("Enter the amount paid.");
+        if (amt > fineBalance(fine)) throw new Error("That is more than the fine balance.");
+        const payments = [...(fine.payments || []), { date, amount: amt }];
+        const bt = writeBatch(db);
+        bt.update(doc(db, "fines", fine.id), { payments });
+        bt.set(histRef(), histData("fine", `Fine payment: ${fine.name} (${fine.acct}) paid ${money(amt)} on ${pretty(date)} for "${fine.reason}"`));
+        const r = await settle(bt.commit());
+        fine.payments = payments; draw(); sent("Payment recorded.", r);
+      }, "Save payment");
+    });
+    $$("[data-del]", m).forEach(b => b.onclick = async () => {
+      if (!confirm("Delete this fine? This cannot be undone.")) return;
+      const fine = fines.find(x => x.id === b.dataset.del);
+      try {
+        const bt = writeBatch(db);
+        bt.delete(doc(db, "fines", fine.id));
+        bt.set(histRef(), histData("fine", `Fine deleted: ${fine.name} (${fine.acct}), ${money(fine.amount)}, "${fine.reason}", paid so far ${money(paidSum(fine.payments))}`));
+        const r = await settle(bt.commit());
+        fines = fines.filter(x => x.id !== fine.id); draw(); sent("Fine deleted.", r);
+      } catch (e) { toast(friendly(e), true); }
+    });
+  };
+  draw();
+};
+
+function loanCard(l, role) {
+  const asOf = today(), st = loanState(l, asOf), open = st.owed > 0;
+  const next = nextInterestDate(asOf), late = open && l.due && asOf > l.due;
+  const sub = role === "guarantor" ? `Borrower: ${esc(l.name)}` : role === "borrower" ? `Guarantor: ${esc(l.gName || "none")}` : `${esc(l.acct)}, guarantor ${esc(l.gName || "none")}`;
+  const row = (a, b, c, red) => `<div class="line"><div class="l"><b>${a}</b>${b ? `<small>${b}</small>` : ""}</div><span class="dots"></span><div class="r"${red ? ' style="color:var(--red)"' : ""}>${c}</div></div>`;
+  const badge = !open ? '<span class="badge b-ok">Cleared</span>' : late ? '<span class="badge b-no">Overdue</span>' : '<span class="badge b-mute">Open</span>';
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+      <div><h3>${esc(l.name || "Loan")}</h3><p class="muted">${sub}</p><p class="muted">Loan code ${esc(l.code)}</p></div>${badge}</div>
+    <div class="ledger" style="margin-top:12px">
+      ${row("Borrowed", "on " + pretty(l.date), money(l.principal))}
+      ${row("Interest added", "5% each last Sunday", money(st.charged))}
+      ${row("Paid so far", "", money(st.paid))}
+      ${row("Owed today", "", money(st.owed), open)}
+      ${open ? row("Next interest", pretty(next) + ", if nothing is paid", "+" + money(Math.round(RATE * st.owed))) : ""}
+      ${l.due ? row("Repay by", plural(l.months, "month"), pretty(l.due)) : ""}
+    </div>
+    <details class="how"><summary>See how it was worked out</summary><div class="ledger" style="margin-top:8px">
+      ${row("Loan given", pretty(l.date), money(l.principal))}
+      ${st.log.map(e => row(e.type === "int" ? "Interest added" : "Payment", pretty(e.date), (e.type === "int" ? "+" : "-") + money(e.amount) + `<small>owed ${money(e.owed)}</small>`)).join("")}
+    </div></details>
+    ${l.note ? `<p class="note">Reason: ${esc(l.note)}</p>` : ""}
+    ${role === "secretary" ? `<div class="actions">${open ? `<button class="btn small" data-lpay="${esc(l.code)}">Record payment</button>` : ""}${(l.payments || []).length ? "" : `<button class="btn small danger" data-ldel="${esc(l.code)}">Delete</button>`}</div>` : ""}
+  </div>`;
+}
+
+async function refreshMe() {
+  const d = await getDoc(doc(db, "members", S.acct));
+  S.me = { id: d.id, ...d.data() };
+}
+async function myLoanData() {
+  const [a, b] = await Promise.all([
+    getDocs(query(collection(db, "loanRequests"), where("acct", "==", S.acct))),
+    getDocs(query(collection(db, "loanRequests"), where("gAcct", "==", S.acct)))
+  ]);
+  const mine = a.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
+  const backing = b.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
+  const fetchLoan = async r => { try { const d = await getDoc(doc(db, "loans", r.loanCode)); return { code: d.id, reqId: r.id, ...d.data() }; } catch (e) { return null; } };
+  const [myLoans, backLoans] = await Promise.all([
+    Promise.all(mine.filter(r => r.status === "approved" && r.loanCode).map(fetchLoan)),
+    Promise.all(backing.filter(r => r.status === "approved" && r.loanCode).map(fetchLoan))
+  ]);
+  return { mine, backing, myLoans: myLoans.filter(Boolean), backLoans: backLoans.filter(Boolean) };
+}
+
+VIEWS.loan = async m => {
+  const [, , data] = await Promise.all([loadMembers(), refreshMe(), myLoanData()]);
+  const asOf = today();
+  const fr = freeInfo(S.me, [...data.myLoans, ...data.backLoans], asOf, thisYear());
+  const active = data.myLoans.filter(l => loanState(l, asOf).owed > 0);
+  const cleared = data.myLoans.filter(l => loanState(l, asOf).owed <= 0);
+  const openReq = data.mine.find(r => r.status === "awaiting_guarantor" || r.status === "ready");
+  const closed = data.mine.filter(r => ["declined", "declined_guarantor", "cancelled"].includes(r.status)).slice(0, 5);
+  const line = (a, b, c) => `<div class="line"><div class="l"><b>${a}</b>${b ? `<small>${b}</small>` : ""}</div><span class="dots"></span><div class="r">${c}</div></div>`;
+  m.innerHTML = `
+    <div class="section-title" style="margin-top:0"><h2>My savings cover</h2></div>
+    <div class="ledger">
+      ${line("Saved in " + thisYear(), "", money(fr.saved))}
+      ${line("Owed on my loan", "with interest", money(fr.own))}
+      ${line("Backing for others", "as guarantor", money(fr.back))}
+      ${line("Free savings", "what you can still borrow or back", money(fr.free))}
+    </div>
+    ${active.length ? `<div class="section-title"><h2>My loan</h2></div>${active.map(l => loanCard(l, "borrower")).join("")}` : ""}
+    ${openReq ? `<div class="section-title"><h2>My request</h2></div><div class="card">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h3>${money(openReq.amount)} for ${plural(openReq.months, "month")}</h3>${reqBadge(openReq.status)}</div>
+      <p class="muted" style="margin-top:6px">Guarantor: ${esc(openReq.gName)}. ${openReq.status === "awaiting_guarantor" ? "Waiting for your guarantor to agree." : "Your guarantor agreed. Waiting for the secretary."}</p>
+      <div class="actions"><button class="btn small danger" id="cancel">Cancel request</button></div></div>` : ""}
+    ${!openReq && !active.length ? '<button class="btn primary block" id="req" style="margin-top:16px">Request a loan</button>' : ""}
+    ${active.length && !openReq ? '<p class="note">You can ask for a new loan once this one is fully paid.</p>' : ""}
+    ${closed.length ? `<div class="section-title"><h2>Earlier requests</h2></div>${closed.map(r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${money(r.amount)}</b>${reqBadge(r.status)}</div>
+      <p class="muted">${r.status === "declined_guarantor" ? "Your guarantor declined." : r.declineReason ? "Reason: " + esc(r.declineReason) : ""}</p></div>`).join("")}` : ""}
+    ${cleared.length ? `<details class="how"><summary>Past loans (${cleared.length})</summary>${cleared.map(l => loanCard(l, "borrower")).join("")}</details>` : ""}`;
+  const cancel = $("#cancel", m);
+  if (cancel) cancel.onclick = async () => {
+    if (!confirm("Cancel this loan request?")) return;
+    try { await settle(updateDoc(doc(db, "loanRequests", openReq.id), { status: "cancelled" })); toast("Request cancelled."); go("loan"); }
+    catch (e) { toast(friendly(e), true); }
+  };
+  const req = $("#req", m);
+  if (req) req.onclick = () => modal("Request a loan", `
+    <p class="muted" style="margin-bottom:12px">Your free savings are ${money(fr.free)}. Your guarantor must agree, and their savings are checked too.</p>
+    <label>Amount (FCFA)<input name="a" inputmode="numeric" required></label>
+    <label>Months to repay<input name="mo" inputmode="numeric" value="3" required></label>
+    <label>Reason<input name="why" required></label>
+    <label>Guarantor<input name="g" list="ml" required autocomplete="off" placeholder="Type name or number"></label>${memberOptions()}`, async f => {
+    const amount = num(f.get("a")), months = Math.round(num(f.get("mo"))), g = pickMember(f.get("g"));
+    if (amount < 1000) throw new Error("The smallest loan is 1 000 FCFA.");
+    if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
+    if (!g) throw new Error("Choose your guarantor from the list.");
+    if (g.id === S.acct) throw new Error("You cannot guarantee your own loan.");
+    await settle(setDoc(doc(collection(db, "loanRequests")), { acct: S.acct, name: S.me.name, gAcct: g.id, gName: g.name, amount, months, reason: String(f.get("why")).trim(), date: today(), at: Date.now(), status: "awaiting_guarantor", declineReason: "", loanCode: "", bFree: fr.free, by: "member" }));
+    toast("Request sent to your guarantor."); go("loan"); refreshBadges();
+  }, "Send request");
+};
+
+VIEWS.guarantee = async m => {
+  const [, data] = await Promise.all([refreshMe(), myLoanData()]);
+  const asOf = today();
+  const fr = freeInfo(S.me, [...data.myLoans, ...data.backLoans], asOf, thisYear());
+  const promised = data.backing.filter(r => r.status === "ready").reduce((s, r) => s + (+r.amount || 0), 0);
+  const myFree = Math.max(0, fr.free - promised);
+  const awaiting = data.backing.filter(r => r.status === "awaiting_guarantor");
+  const ready = data.backing.filter(r => r.status === "ready");
+  const live = data.backLoans.filter(l => loanState(l, asOf).owed > 0);
+  const done = data.backLoans.filter(l => loanState(l, asOf).owed <= 0);
+  m.innerHTML = `
+    <div class="card"><h3>Your free savings: ${money(myFree)}</h3>
+      <p class="muted">What you saved this year, minus what you owe, minus what you already back${promised ? ", minus loans you agreed to back that are waiting for approval" : ""}.</p></div>
+    ${awaiting.length || live.length || ready.length ? `<div class="card ok"><b>Please remember.</b> A guarantor shares the responsibility if the borrower does not repay. The njangi will tell you how any gap is covered. Interest grows each month the loan stays unpaid, so the amount you back grows too.</div>` : ""}
+    ${awaiting.length ? `<div class="section-title"><h2>Asking for your answer</h2></div>${awaiting.map(r => {
+      const need = Math.max(0, (+r.amount || 0) - (+r.bFree || 0)), ok = myFree >= need;
+      return `<div class="card"><p><b>${esc(r.name)}</b> asks you to stand as guarantor for <b>${money(r.amount)}</b>, to be repaid within ${plural(r.months, "month")}.</p>
+        <p class="muted">Reason: ${esc(r.reason)}</p>
+        <p class="muted">Their own free savings cover ${money(r.bFree || 0)}. Your free savings must cover the other ${money(need)}.</p>
+        ${ok ? "" : '<p class="note" style="color:var(--red)">Your free savings are too low to back this loan, so you cannot agree.</p>'}
+        <div class="actions"><button class="btn small primary" data-agree="${r.id}" ${ok ? "" : "disabled"}>I agree</button><button class="btn small danger" data-no="${r.id}">I decline</button></div></div>`;
+    }).join("")}` : ""}
+    ${ready.length ? `<div class="section-title"><h2>You agreed</h2></div>${ready.map(r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(r.name)}</b>${reqBadge(r.status)}</div><p class="muted">${money(r.amount)} for ${plural(r.months, "month")}. Waiting for the secretary to approve.</p></div>`).join("")}` : ""}
+    ${live.length ? `<div class="section-title"><h2>Loans you back</h2></div>${live.map(l => loanCard(l, "guarantor")).join("")}` : ""}
+    ${!awaiting.length && !ready.length && !live.length ? '<p class="muted" style="margin-top:14px">You are not backing any loan right now.</p>' : ""}
+    ${done.length ? `<details class="how"><summary>Loans you backed that are cleared (${done.length})</summary>${done.map(l => loanCard(l, "guarantor")).join("")}</details>` : ""}`;
+  $$("[data-agree]", m).forEach(b => b.onclick = async () => {
+    try { await settle(updateDoc(doc(db, "loanRequests", b.dataset.agree), { status: "ready" })); toast("Thank you. The secretary will review it."); go("guarantee"); }
+    catch (e) { toast(friendly(e), true); }
+  });
+  $$("[data-no]", m).forEach(b => b.onclick = async () => {
+    if (!confirm("Decline to be this member's guarantor?")) return;
+    try { await settle(updateDoc(doc(db, "loanRequests", b.dataset.no), { status: "declined_guarantor" })); toast("You declined."); go("guarantee"); }
+    catch (e) { toast(friendly(e), true); }
+  });
+};
+
+VIEWS.report = async m => {
+  const s = await getDocs(query(collection(db, "reports"), where("acct", "==", S.acct)));
+  const mine = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.at - a.at);
+  m.innerHTML = `
+    <div class="card"><h3>Tell the secretary</h3><p class="muted" style="margin-bottom:12px">Use this if a saving, fine or attendance is missing or wrong. Say which Sunday and what you expected.</p>
+    <form id="rf"><label>Sunday it is about (optional)<input type="date" name="about"></label>
+    <label>Your message<textarea name="msg" required placeholder="e.g. I sent 5 000 FCFA by Mobile Money on Sunday but it shows 2 000."></textarea></label>
+    <button class="btn primary block">Send to secretary</button></form></div>
+    <div class="section-title"><h2>My reports</h2></div>
+    ${mine.map(r => `<div class="card"><p>${esc(r.message)}</p>
+      <p class="muted">${r.about ? "About " + pretty(r.about) + ", " : ""}sent ${pretty(r.date)} ${r.status === "resolved" ? '<span class="badge b-ok">Answered</span>' : '<span class="badge b-mute">Waiting</span>'}</p>
+      ${r.reply ? `<div class="card ok" style="margin:10px 0 0"><b>Secretary:</b> ${esc(r.reply)}</div>` : ""}</div>`).join("") || '<p class="muted">You have not sent any report.</p>'}`;
+  $("#rf", m).onsubmit = async e => {
+    e.preventDefault(); const f = new FormData(e.target), b = $("#rf .primary"); b.disabled = true;
+    try {
+      await settle(setDoc(doc(collection(db, "reports")), { acct: S.acct, name: S.me.name, date: today(), about: f.get("about") || "", message: String(f.get("msg")).trim(), status: "open", reply: "", at: Date.now() }));
+      toast("Sent. The secretary will reply here."); go("report");
+    } catch (err) { toast(friendly(err), true); b.disabled = false; }
+  };
+};
+
+/* ================= SECRETARY VIEWS ================= */
+VIEWS.sunday = async m => {
+  let date = S.sunday || lastSunday(), recs = {};
+  m.innerHTML = `
+    <div class="card"><label>Sunday<input type="date" id="dt" value="${date}"></label>
+    <input id="q" placeholder="Search by name or number" style="margin-top:0">
+    <p class="muted" id="sum" style="margin-top:10px"></p>
+    ${backupAge() > 30 ? '<p class="note" style="color:var(--red)">No backup saved in the last 30 days. Open More, then Backup.</p>' : ""}</div>
+    <div id="rows"></div>
+    <div class="savebar"><button class="btn primary block" id="save">Save Sunday records</button></div>`;
+  const summary = () => {
+    let p = 0, a = 0, t = 0;
+    $$(".srow", m).forEach(r => { const st = $(".st", r).value; if (st === "present") p++; if (st === "absent") a++; t += num($(".amt", r).value); });
+    $("#sum", m).textContent = `${p} present, ${a} absent, ${money(t)} entered`;
+  };
+  const draw = () => {
+    const list = S.members.filter(x => x.active !== false || recs[x.id]);
+    $("#rows", m).innerHTML = list.map(x => {
+      const r = recs[x.id], st = r ? (r.present ? "present" : "absent") : "";
+      return `<div class="srow ${r ? "rec" : ""}" data-acct="${esc(x.id)}" data-key="${esc((x.name + " " + x.id).toLowerCase())}">
+        <div class="who2"><b>${esc(x.name)}</b><span>${esc(x.id)}</span></div>
+        <select class="st" aria-label="Attendance for ${esc(x.name)}"><option value="">Not recorded</option><option value="present" ${st === "present" ? "selected" : ""}>Present</option><option value="absent" ${st === "absent" ? "selected" : ""}>Absent</option></select>
+        <input class="amt" inputmode="numeric" placeholder="Amount" aria-label="Amount for ${esc(x.name)}" value="${r && r.amount ? r.amount : ""}"></div>`;
+    }).join("") || '<div class="card">No members yet. Add members in the Members tab first.</div>';
+    $$(".srow select,.srow input", m).forEach(i => i.oninput = summary);
+    filter(); summary();
+  };
+  const filter = () => { const q = $("#q", m).value.trim().toLowerCase(); $$(".srow", m).forEach(r => r.hidden = !!q && !r.dataset.key.includes(q)); };
+  const load = async () => {
+    date = $("#dt", m).value; S.sunday = date;
+    if (!isSunday(date)) { $("#rows", m).innerHTML = '<div class="card err">Savings are recorded on Sundays only. Please choose a Sunday.</div>'; $("#sum", m).textContent = ""; return; }
+    $("#rows", m).innerHTML = '<div class="loading">Loading...</div>';
+    const [s] = await Promise.all([getDocs(query(collection(db, "savings"), where("date", "==", date))), loadMembers()]);
+    recs = {}; s.docs.forEach(d => { const x = d.data(); recs[x.acct] = x; });
+    draw();
+  };
+  $("#dt", m).onchange = load; $("#q", m).oninput = filter;
+  $("#save", m).onclick = async () => {
+    if (!isSunday(date)) return toast("Please choose a Sunday.", true);
+    const map = byId(S.members), year = +date.slice(0, 4), ops = [];
+    for (const row of $$(".srow", m)) {
+      const acct = row.dataset.acct, st = $(".st", row).value, raw = $(".amt", row).value.trim();
+      const amt = raw === "" ? 0 : num(raw), old = recs[acct];
+      if (amt > 0 && amt < 1000) return toast(`${acct}: saving must be 0 or at least 1 000 FCFA.`, true);
+      if (!st && amt > 0) return toast(`${acct}: choose Present or Absent for the amount entered.`, true);
+      if (!st && !old) continue;
+      if (st && old && old.present === (st === "present") && (+old.amount || 0) === amt) continue;
+      ops.push({ acct, st, amt, old });
+    }
+    if (!ops.length) return toast("Nothing has changed.");
+    const btn = $("#save", m); btn.disabled = true;
+    try {
+      const batches = [];
+      for (let i = 0; i < ops.length; i += 120) {
+        const b = writeBatch(db);
+        ops.slice(i, i + 120).forEach(o => {
+          const nm = map[o.acct].name;
+          const ref = doc(db, "savings", `${date}_${o.acct}`);
+          if (!o.st) b.delete(ref);
+          else b.set(ref, { acct: o.acct, name: nm, date, year, present: o.st === "present", amount: o.amt });
+          const delta = (o.st ? o.amt : 0) - (o.old ? (+o.old.amount || 0) : 0);
+          if (delta) b.update(doc(db, "members", o.acct), { [`totals.${year}`]: increment(delta) });
+          const was = o.old ? `${o.old.present ? "present" : "absent"} ${money(o.old.amount || 0)}` : "nothing";
+          const now = o.st ? `${o.st} ${money(o.amt)}` : "removed";
+          b.set(histRef(), histData("savings", `${nm} (${o.acct}), ${pretty(date)}: ${was} changed to ${now}`));
+        });
+        batches.push(b);
+      }
+      const r = await settle(Promise.all(batches.map(b => b.commit())));
+      // update what is on the screen right away, no need to wait or reload
+      ops.forEach(o => {
+        const mem = map[o.acct];
+        if (!o.st) delete recs[o.acct];
+        else recs[o.acct] = { acct: o.acct, name: mem.name, date, year, present: o.st === "present", amount: o.amt };
+        const delta = (o.st ? o.amt : 0) - (o.old ? (+o.old.amount || 0) : 0);
+        mem.totals = { ...(mem.totals || {}), [year]: ((mem.totals || {})[year] || 0) + delta };
+      });
+      draw();
+      sent(`Saved ${ops.length} record${ops.length > 1 ? "s" : ""}.`, r);
+    } catch (e) { toast(friendly(e), true); }
+    btn.disabled = false;
+  };
+  await load();
+};
+
+VIEWS.members = async m => {
+  await loadMembers();
+  const yr = String(thisYear());
+  const draw = () => {
+    const q = ($("#q", m) ? $("#q", m).value : "").trim().toLowerCase();
+    const list = S.members.filter(x => !q || x.name.toLowerCase().includes(q) || x.id.toLowerCase().includes(q));
+    $("#list", m).innerHTML = `<div class="ledger">${list.map(x => `<div class="line"><div class="l"><b>${esc(x.name)}${x.active === false ? '<span class="badge b-mute">Inactive</span>' : ""}</b><small>${esc(x.id)}${x.phone ? ", " + esc(x.phone) : ""}</small>
+      <div class="actions"><button class="btn small" data-tg="${esc(x.id)}">${x.active === false ? "Make active" : "Make inactive"}</button><button class="btn small danger" data-rs="${esc(x.id)}">Reset PIN</button></div></div><span class="dots"></span><div class="r">${money((x.totals || {})[yr] || 0)}<small>saved in ${yr}</small></div></div>`).join("") || '<div class="line"><div class="l muted">No members found.</div></div>'}</div>`;
+    $$("[data-tg]", m).forEach(b => b.onclick = async () => {
+      const x = S.members.find(z => z.id === b.dataset.tg), v = x.active === false;
+      try {
+        const bt = writeBatch(db);
+        bt.update(doc(db, "members", x.id), { active: v });
+        bt.set(histRef(), histData("member", `${x.name} (${x.id}) made ${v ? "active" : "inactive"}`));
+        await settle(bt.commit()); x.active = v; draw();
+      } catch (e) { toast(friendly(e), true); }
+    });
+    $$("[data-rs]", m).forEach(b => b.onclick = async () => {
+      const x = S.members.find(z => z.id === b.dataset.rs);
+      if (!confirm(`Reset the PIN for ${x.name}? Their old PIN will stop working.`)) return;
+      b.disabled = true;
+      try {
+        const ca = creatorAuth(), pin = randomPin();
+        let ver = (x.pinVer || 1) + 1, made = false;
+        for (let i = 0; i < 8 && !made; i++) {
+          try { await createUserWithEmailAndPassword(ca, emailFor(x.id, ver), pin); await signOut(ca); made = true; }
+          catch (err) { if (err.code !== "auth/email-already-in-use") throw err; ver++; }
+        }
+        if (!made) throw new Error("Could not reset the PIN. Try again.");
+        const bt = writeBatch(db);
+        bt.update(doc(db, "members", x.id), { pinVer: ver });
+        bt.set(doc(db, "pinVersions", x.id), { v: ver });
+        bt.set(histRef(), histData("member", `PIN reset for ${x.name} (${x.id})`));
+        await settle(bt.commit());
+        x.pinVer = ver;
+        info("PIN reset", `<p>Give these details to <b>${esc(x.name)}</b> now. The PIN cannot be shown again.</p>
+          <div class="cred">Account number<br><b>${esc(spaced(x.id))}</b><br><br>New PIN<br><b>${pin}</b></div>
+          <p class="muted">The old PIN no longer works. The member can choose their own PIN with Change my PIN on the Home tab.</p>`);
+      } catch (e) { toast(friendly(e), true); }
+      b.disabled = false;
+    });
+  };
+  m.innerHTML = `<div class="card"><h3>Add a member</h3><p class="muted" style="margin-bottom:12px">${S.members.length} members so far. The account number and PIN are made for you.</p>
+    <form id="af"><label>Full name<input name="name" required autocomplete="off"></label>
+    <label>Phone (optional)<input name="phone" inputmode="tel" autocomplete="off"></label>
+    <button class="btn primary block">Add member</button></form></div>
+    <input id="q" placeholder="Search members" style="margin-bottom:12px"><div id="list"></div>`;
+  $("#q", m).oninput = draw;
+  $("#af", m).onsubmit = async e => {
+    e.preventDefault(); const f = new FormData(e.target), b = $("#af .primary"); b.disabled = true;
+    try {
+      const name = String(f.get("name")).trim(), phone = String(f.get("phone")).trim(), pin = randomPin();
+      const ca = creatorAuth();
+      let n = S.members.reduce((mx, x) => Math.max(mx, parseInt(x.id.replace(/\D/g, "")) || 0), 0) + 1, acct = null;
+      for (let i = 0; i < 40 && !acct; i++, n++) {
+        const id = "BYN" + String(n).padStart(4, "0");
+        try { await createUserWithEmailAndPassword(ca, emailFor(id), pin); await signOut(ca); acct = id; }
+        catch (err) { if (err.code !== "auth/email-already-in-use") throw err; }
+      }
+      if (!acct) throw new Error("Could not create an account number. Try again.");
+      const bt = writeBatch(db);
+      bt.set(doc(db, "members", acct), { name, phone, active: true, totals: {}, joined: today() });
+      bt.set(histRef(), histData("member", `Member added: ${name} (${acct})`));
+      await settle(bt.commit());
+      e.target.reset();
+      info("Member added", `<p>Give these details to <b>${esc(name)}</b> now. The PIN cannot be shown again.</p>
+        <div class="cred">Account number<br><b>${esc(spaced(acct))}</b><br><br>PIN<br><b>${pin}</b></div>
+        <p class="muted">Tell them to keep the PIN private.</p>`);
+      await loadMembers(true); draw();
+    } catch (err) { toast(friendly(err), true); }
+    b.disabled = false;
+  };
+  draw();
+};
+
+function assess(r, amount, loans, asOf, year) {
+  const mem = byId(S.members), b = mem[r.acct], g = mem[r.gAcct];
+  const bf = freeInfo(b, loans, asOf, year), gf = freeInfo(g, loans, asOf, year);
+  const saved = S.members.reduce((s, x) => s + ((x.totals || {})[year] || 0), 0);
+  const out = loans.reduce((s, l) => s + loanState(l, asOf).principal, 0);
+  const why = [];
+  if (!b || !g) why.push("The borrower or the guarantor was not found.");
+  if (r.acct === r.gAcct) why.push("A member cannot guarantee their own loan.");
+  if (bf.own > 0) why.push(`${r.name} still owes ${money(bf.own)} on another loan.`);
+  if (amount <= 0) why.push("Enter the amount to approve.");
+  else if (bf.free + gf.free < amount) why.push(`Together their free savings are ${money(bf.free + gf.free)}. That is less than ${money(amount)}.`);
+  return { bf, gf, cover: bf.free + gf.free, cash: saved - out, ok: why.length === 0, why };
+}
+function assessPanel(r, a, amount) {
+  const row = (t, s, v) => `<div class="line"><div class="l"><b>${t}</b><small>${s}</small></div><span class="dots"></span><div class="r">${v}</div></div>`;
+  return `<div class="ledger">
+    ${row(esc(r.name) + " (borrower)", `saved ${money(a.bf.saved)}, owes ${money(a.bf.own)}, backs ${money(a.bf.back)}`, money(a.bf.free) + "<small>free</small>")}
+    ${row(esc(r.gName) + " (guarantor)", `saved ${money(a.gf.saved)}, owes ${money(a.gf.own)}, backs ${money(a.gf.back)}`, money(a.gf.free) + "<small>free</small>")}
+    ${row("Cover together", "must be at least the loan", money(a.cover))}
+    ${row("Cash available to lend", "savings this year minus loans out", money(a.cash))}
+  </div>
+  <div class="verdict ${a.ok ? "good" : "bad"}">${a.ok ? "The safety check passes." : a.why.map(w => `<p>${esc(w)}</p>`).join("")}
+  ${a.ok && amount > a.cash ? "<p>Warning: this is more than the cash available to lend.</p>" : ""}</div>`;
+}
+
+VIEWS.loans = async m => {
+  const [, ls, rs] = await Promise.all([loadMembers(), getDocs(collection(db, "loans")), getDocs(collection(db, "loanRequests"))]);
+  let loans = ls.docs.map(d => ({ code: d.id, ...d.data() }));
+  let reqs = rs.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.at - a.at);
+  const reqCard = r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h3>${esc(r.name)}</h3><p class="muted">${esc(r.acct)}, asked on ${pretty(r.date)}${r.by === "secretary" ? ", recorded by you" : ""}</p></div>${reqBadge(r.status)}</div>
+    <p style="margin-top:8px"><b>${money(r.amount)}</b> over ${plural(r.months, "month")}</p>
+    <p class="muted">Guarantor: ${esc(r.gName)} (${esc(r.gAcct)})</p><p class="muted">Reason: ${esc(r.reason)}</p>
+    ${r.declineReason ? `<p class="note">Decline reason: ${esc(r.declineReason)}</p>` : ""}
+    ${r.status === "awaiting_guarantor" ? `<div class="actions"><button class="btn small" data-gok="${r.id}">Guarantor agreed in person</button><button class="btn small danger" data-dec="${r.id}">Decline</button></div>` : ""}
+    ${r.status === "ready" ? `<div class="actions"><button class="btn small primary" data-rev="${r.id}">Review and approve</button><button class="btn small danger" data-dec="${r.id}">Decline</button></div>` : ""}</div>`;
+
+  const draw = () => {
+    const asOf = today();
+    const all = loans.map(l => ({ l, st: loanState(l, asOf) }));
+    const active = all.filter(x => x.st.owed > 0).sort((a, b) => b.l.date.localeCompare(a.l.date));
+    const cleared = all.filter(x => x.st.owed <= 0);
+    const owedTotal = active.reduce((s, x) => s + x.st.owed, 0);
+    const ready = reqs.filter(r => r.status === "ready"), waiting = reqs.filter(r => r.status === "awaiting_guarantor");
+    const closed = reqs.filter(r => ["declined", "declined_guarantor", "cancelled"].includes(r.status)).slice(0, 10);
+    m.innerHTML = `<button class="btn primary block" id="add" style="margin-bottom:14px">Record a request for a member</button>
+      <div class="stats"><div class="stat"><b>${active.length}</b><span>Loans running</span></div><div class="stat red"><b>${money(owedTotal)}</b><span>Owed today, with interest</span></div></div>
+      <div class="section-title"><h2>Ready for approval</h2><span class="muted">${ready.length}</span></div>
+      ${ready.map(reqCard).join("") || '<p class="muted">Nothing is waiting for you.</p>'}
+      <div class="section-title"><h2>Waiting for a guarantor</h2><span class="muted">${waiting.length}</span></div>
+      ${waiting.map(reqCard).join("") || '<p class="muted">None.</p>'}
+      <div class="section-title"><h2>Loans running</h2></div>
+      ${active.map(x => loanCard(x.l, "secretary")).join("") || '<p class="muted">No loans are running.</p>'}
+      ${cleared.length ? `<details class="how"><summary>Cleared loans (${cleared.length})</summary>${cleared.map(x => loanCard(x.l, "secretary")).join("")}</details>` : ""}
+      ${closed.length ? `<details class="how"><summary>Closed requests (${closed.length})</summary>${closed.map(reqCard).join("")}</details>` : ""}`;
+    wire();
+  };
+
+  const wire = () => {
+    $("#add", m).onclick = () => modal("Record a request", `
+      <label>Borrower<input name="m" list="ml" required autocomplete="off" placeholder="Type name or number"></label>
+      <label>Guarantor<input name="g" list="ml" required autocomplete="off" placeholder="Type name or number"></label>${memberOptions()}
+      <label>Amount (FCFA)<input name="a" inputmode="numeric" required></label>
+      <label>Months to repay<input name="mo" inputmode="numeric" value="3" required></label>
+      <label>Reason<input name="why" required></label>`, async f => {
+      const b = pickMember(f.get("m")), g = pickMember(f.get("g"));
+      const amount = num(f.get("a")), months = Math.round(num(f.get("mo")));
+      if (!b || !g) throw new Error("Choose the borrower and the guarantor from the list.");
+      if (b.id === g.id) throw new Error("A member cannot guarantee their own loan.");
+      if (amount < 1000) throw new Error("The smallest loan is 1 000 FCFA.");
+      if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
+      if (reqs.some(r => r.acct === b.id && (r.status === "awaiting_guarantor" || r.status === "ready"))) throw new Error(`${b.name} already has an open request.`);
+      const fr = freeInfo(b, loans, today(), thisYear());
+      if (fr.own > 0) throw new Error(`${b.name} still owes ${money(fr.own)} on another loan.`);
+      const data = { acct: b.id, name: b.name, gAcct: g.id, gName: g.name, amount, months, reason: String(f.get("why")).trim(), date: today(), at: Date.now(), status: "awaiting_guarantor", declineReason: "", loanCode: "", bFree: fr.free, by: "secretary" };
+      const ref = doc(collection(db, "loanRequests"));
+      const bt = writeBatch(db);
+      bt.set(ref, data);
+      bt.set(histRef(), histData("loan", `Loan request recorded: ${b.name} (${b.id}), ${money(amount)}, ${plural(months, "month")}, guarantor ${g.name} (${g.id})`));
+      const r = await settle(bt.commit());
+      reqs.unshift({ id: ref.id, ...data }); draw(); refreshBadges(); sent("Request recorded.", r);
+    }, "Record request");
+
+    $$("[data-gok]", m).forEach(b => b.onclick = async () => {
+      if (!confirm("Confirm that the guarantor agreed in person?")) return;
+      const r = reqs.find(x => x.id === b.dataset.gok);
+      try {
+        const bt = writeBatch(db);
+        bt.update(doc(db, "loanRequests", r.id), { status: "ready" });
+        bt.set(histRef(), histData("loan", `Guarantor ${r.gName} (${r.gAcct}) agreed in person to back ${r.name}'s request of ${money(r.amount)}`));
+        const x = await settle(bt.commit());
+        r.status = "ready"; draw(); refreshBadges(); sent("Marked as agreed.", x);
+      } catch (e) { toast(friendly(e), true); }
+    });
+
+    $$("[data-dec]", m).forEach(b => b.onclick = () => {
+      const r = reqs.find(x => x.id === b.dataset.dec);
+      modal("Decline request", `<p class="muted">${esc(r.name)} asked for ${money(r.amount)}.</p><label>Reason the member will read<textarea name="why" required></textarea></label>`, async f => {
+        const declineReason = String(f.get("why")).trim();
+        const bt = writeBatch(db);
+        bt.update(doc(db, "loanRequests", r.id), { status: "declined", declineReason });
+        bt.set(histRef(), histData("loan", `Loan request declined: ${r.name} (${r.acct}), ${money(r.amount)}. Reason: ${declineReason}`));
+        const x = await settle(bt.commit());
+        r.status = "declined"; r.declineReason = declineReason; draw(); refreshBadges(); sent("Request declined.", x);
+      }, "Decline request");
+    });
+
+    $$("[data-rev]", m).forEach(b => b.onclick = () => {
+      const r = reqs.find(x => x.id === b.dataset.rev), year = thisYear();
+      const w = modal("Review and approve", `
+        <p><b>${esc(r.name)}</b> asks for <b>${money(r.amount)}</b> over ${plural(r.months, "month")}.</p>
+        <p class="muted" style="margin-bottom:10px">Reason: ${esc(r.reason)}</p>
+        <div id="asm"></div>
+        <label style="margin-top:14px">Amount to approve (FCFA)<input name="a" inputmode="numeric" value="${r.amount}" required></label>
+        <label>Months to repay<input name="mo" inputmode="numeric" value="${r.months}" required></label>
+        <label>Date given<input name="d" type="date" value="${today()}" required></label>
+        <p class="note" style="margin-top:0">Interest is 5% of everything owed, added on the last Sunday of each month.</p>`, async f => {
+        const amount = num(f.get("a")), months = Math.round(num(f.get("mo"))), date = f.get("d");
+        const a = assess(r, amount, loans, today(), year);
+        if (!a.ok) throw new Error(a.why[0]);
+        if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
+        const code = loanCode();
+        const data = { acct: r.acct, name: r.name, gAcct: r.gAcct, gName: r.gName, principal: amount, date, months, due: addMonths(date, months), reqId: r.id, note: r.reason, payments: [], rate: 5 };
+        const bt = writeBatch(db);
+        bt.set(doc(db, "loans", code), data);
+        bt.update(doc(db, "loanRequests", r.id), { status: "approved", loanCode: code, amount });
+        bt.set(histRef(), histData("loan", `Loan approved: ${r.name} (${r.acct}), ${money(amount)}, ${plural(months, "month")}, guarantor ${r.gName} (${r.gAcct}), code ${code}`));
+        const x = await settle(bt.commit());
+        loans.push({ code, ...data }); r.status = "approved"; r.loanCode = code; r.amount = amount;
+        draw(); refreshBadges();
+        info("Loan approved", `<p><b>${esc(r.name)}</b> and the guarantor <b>${esc(r.gName)}</b> can now see this loan in the app. The loan code is:</p><div class="cred"><b>${code}</b></div>${x === "later" ? '<p class="muted">Saved on this phone. It will send when the internet returns.</p>' : ""}`);
+      }, "Approve loan");
+      const show = () => { const amt = num($("[name=a]", w).value); $("#asm", w).innerHTML = assessPanel(r, assess(r, amt, loans, today(), year), amt); };
+      $("[name=a]", w).oninput = show; show();
+    });
+
+    $$("[data-lpay]", m).forEach(b => b.onclick = () => {
+      const l = loans.find(x => x.code === b.dataset.lpay), st = loanState(l, today());
+      modal("Record loan payment", `<p class="muted">${esc(l.name)} owes ${money(st.owed)} today.</p>
+        <label>Amount paid<input name="a" inputmode="numeric" value="${st.owed}" required></label>
+        <label>Date paid<input name="d" type="date" value="${today()}" required></label>`, async f => {
+        const a = num(f.get("a")), d = f.get("d");
+        if (a <= 0) throw new Error("Enter the amount paid.");
+        if (d < l.date) throw new Error("That date is before the loan was given.");
+        if (d > today()) throw new Error("The date cannot be in the future.");
+        const owedThen = loanState(l, d).owed;
+        if (a > owedThen) throw new Error(`On that date the loan owed ${money(owedThen)}. Enter that amount or less.`);
+        const payments = [...(l.payments || []), { date: d, amount: a }];
+        const bt = writeBatch(db);
+        bt.update(doc(db, "loans", l.code), { payments });
+        bt.set(histRef(), histData("loan", `Loan payment: ${l.name} (${l.acct}) paid ${money(a)} on ${pretty(d)}, loan ${l.code}`));
+        const x = await settle(bt.commit());
+        l.payments = payments; draw(); sent("Payment recorded.", x);
+      }, "Save payment");
+    });
+
+    $$("[data-ldel]", m).forEach(b => b.onclick = async () => {
+      const l = loans.find(x => x.code === b.dataset.ldel);
+      if (!confirm("Delete this loan? Do this only if it was approved by mistake.")) return;
+      try {
+        const bt = writeBatch(db);
+        bt.delete(doc(db, "loans", l.code));
+        if (l.reqId) bt.update(doc(db, "loanRequests", l.reqId), { status: "cancelled" });
+        bt.set(histRef(), histData("loan", `Loan deleted: ${l.name} (${l.acct}), ${money(l.principal)}, code ${l.code}`));
+        const x = await settle(bt.commit());
+        loans = loans.filter(y => y.code !== l.code);
+        const r = reqs.find(y => y.id === l.reqId); if (r) r.status = "cancelled";
+        draw(); sent("Loan deleted.", x);
+      } catch (e) { toast(friendly(e), true); }
+    });
+  };
+  draw();
+};
+
+VIEWS.reports = async m => {
+  const [, s] = await Promise.all([loadMembers(), getDocs(collection(db, "reports"))]);
+  const names = byId(S.members);
+  let list = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || b.at - a.at);
+  const draw = () => {
+    m.innerHTML = `<div class="section-title"><h2>Member reports</h2><span class="muted">${list.filter(r => r.status === "open").length} waiting</span></div>
+    ${list.map(r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><h3>${esc((names[r.acct] || {}).name || r.name)}</h3>${r.status === "resolved" ? '<span class="badge b-ok">Answered</span>' : '<span class="badge b-no">Waiting</span>'}</div>
+      <p class="muted">${esc(r.acct)}, sent ${pretty(r.date)}${r.about ? ", about " + pretty(r.about) : ""}</p>
+      <p style="margin-top:8px">${esc(r.message)}</p>
+      ${r.reply ? `<div class="card ok" style="margin:10px 0 0"><b>Your reply:</b> ${esc(r.reply)}</div>` : ""}
+      <div class="actions"><button class="btn small" data-r="${r.id}">${r.reply ? "Edit reply" : "Reply"}</button></div></div>`).join("") || '<p class="muted">No reports from members.</p>'}`;
+    $$("[data-r]", m).forEach(b => b.onclick = () => {
+      const r = list.find(x => x.id === b.dataset.r);
+      modal("Reply to member", `<p class="muted">${esc(r.message)}</p><label>Your reply<textarea name="rep" required>${esc(r.reply || "")}</textarea></label>`, async f => {
+        const reply = String(f.get("rep")).trim();
+        const x = await settle(updateDoc(doc(db, "reports", r.id), { reply, status: "resolved" }));
+        r.reply = reply; r.status = "resolved"; draw(); sent("Reply sent.", x);
+      }, "Send reply");
+    });
+  };
+  draw();
+};
+
+/* ---------- More tab: year-end, backup, history ---------- */
+VIEWS.yearend = async m => {
+  let sub = S.more || "year";
+  m.innerHTML = `<div class="chips noprint"><button class="chip" data-s="year">Year-end</button><button class="chip" data-s="backup">Backup</button><button class="chip" data-s="hist">History</button></div><div id="sub"></div>`;
+  const panels = { year: yearendPanel, backup: backupPanel, hist: historyPanel };
+  const run = async () => {
+    $$("[data-s]", m).forEach(b => b.classList.toggle("on", b.dataset.s === sub));
+    const box = $("#sub", m);
+    box.innerHTML = '<div class="loading">Loading...</div>';
+    try { await panels[sub](box); }
+    catch (e) { console.error(e); box.innerHTML = `<div class="card err">${esc(friendly(e))}</div>`; }
+  };
+  $$("[data-s]", m).forEach(b => b.onclick = () => { sub = S.more = b.dataset.s; run(); });
+  await run();
+};
+
+async function yearendPanel(m) {
+  await loadMembers();
+  const first = 2024, years = []; for (let y = thisYear() + 1; y >= first; y--) years.push(y);
+  m.innerHTML = `<div class="card noprint"><h3>Year-end sharing</h3><p class="muted" style="margin-bottom:12px">Each member gets back what they saved, plus a share of the interest paid in the year, in proportion to their savings.</p>
+    <label>Year<select id="y">${years.map(y => `<option ${y === thisYear() ? "selected" : ""}>${y}</option>`).join("")}</select></label>
+    <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="fi" style="width:24px;min-height:24px;margin:0"> Also share fines that were paid this year</label>
+    <div class="actions"><button class="btn primary" id="calc">Work it out</button><button class="btn" id="chk">Recheck totals</button></div></div><div id="out"></div>`;
+  $("#chk", m).onclick = async e => {
+    const year = +$("#y", m).value, b = e.target; b.disabled = true;
+    try {
+      const s = await getDocs(query(collection(db, "savings"), where("date", ">=", `${year}-01-01`), where("date", "<=", `${year}-12-31`)));
+      const sums = {}; s.docs.forEach(d => { const x = d.data(); sums[x.acct] = (sums[x.acct] || 0) + (+x.amount || 0); });
+      const fix = S.members.filter(x => ((x.totals || {})[year] || 0) !== (sums[x.id] || 0));
+      for (let i = 0; i < fix.length; i += 400) {
+        const bt = writeBatch(db);
+        fix.slice(i, i + 400).forEach(x => bt.update(doc(db, "members", x.id), { [`totals.${year}`]: sums[x.id] || 0 }));
+        await bt.commit();
+      }
+      if (fix.length) logIt("savings", `Totals rechecked for ${year}: corrected ${fix.length} member total${fix.length > 1 ? "s" : ""}`);
+      await loadMembers(true);
+      toast(fix.length ? `Corrected ${fix.length} member total${fix.length > 1 ? "s" : ""}.` : "All totals match the records.");
+    } catch (err) { toast(friendly(err), true); }
+    b.disabled = false;
+  };
+  $("#calc", m).onclick = async e => {
+    const year = +$("#y", m).value, withFines = $("#fi", m).checked, b = e.target; b.disabled = true;
+    try {
+      const [ls, fs] = await Promise.all([getDocs(collection(db, "loans")), getDocs(collection(db, "fines"))]);
+      const asOf = year >= thisYear() ? today() : `${year}-12-31`;
+      const states = ls.docs.map(d => ({ l: { code: d.id, ...d.data() } })).map(x => ({ ...x, st: loanState(x.l, asOf) }));
+      const interest = states.reduce((a, x) => a + (x.st.intPaidYear[year] || 0), 0);
+      const fines = withFines ? fs.docs.map(d => d.data()).reduce((a, f) => a + (f.payments || []).filter(p => +p.date.slice(0, 4) === year).reduce((s, p) => s + (+p.amount || 0), 0), 0) : 0;
+      const pool = interest + fines;
+      const rows = S.members.map(x => ({ x, saved: (x.totals || {})[year] || 0 })).filter(r => r.saved > 0);
+      const total = rows.reduce((a, r) => a + r.saved, 0);
+      rows.forEach(r => { r.share = total ? Math.floor(pool * r.saved / total) : 0; r.pay = r.saved + r.share; });
+      const unpaid = states.filter(x => x.st.owed > 0);
+      $("#out", m).innerHTML = `
+        <div class="stats"><div class="stat"><b>${money(total)}</b><span>Total saved in ${year}</span></div><div class="stat"><b>${money(pool)}</b><span>Interest${withFines ? " and fines" : ""} paid to share</span></div></div>
+        ${unpaid.length ? `<div class="card err"><b>${plural(unpaid.length, "loan")} not fully repaid.</b> Clear these before sharing, or decide as a group how they are covered. Unpaid interest is not counted above.
+          ${unpaid.map(x => `<p style="margin-top:6px">${esc(x.l.name)} owes ${money(x.st.owed)}. Guarantor: ${esc(x.l.gName || "none")}.</p>`).join("")}</div>` : ""}
+        <div class="card"><div class="scroll"><table><thead><tr><th>Member</th><th>Saved</th><th>Share</th><th>Payout</th></tr></thead><tbody>
+          ${rows.map(r => `<tr><td>${esc(r.x.name)}<br><small class="muted">${esc(r.x.id)}</small></td><td>${money(r.saved)}</td><td>${money(r.share)}</td><td><b>${money(r.pay)}</b></td></tr>`).join("") || '<tr><td colspan="4" class="muted">No savings recorded for this year.</td></tr>'}
+        </tbody><tfoot><tr><td>Total</td><td>${money(total)}</td><td>${money(rows.reduce((a, r) => a + r.share, 0))}</td><td>${money(rows.reduce((a, r) => a + r.pay, 0))}</td></tr></tfoot></table></div></div>
+        <button class="btn block noprint" onclick="window.print()">Print or save as PDF</button>`;
+    } catch (err) { toast(friendly(err), true); }
+    b.disabled = false;
+  };
+}
+
+/* ----- backup: one file with everything, kept by the secretary ----- */
+const csvCell = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+const csvRow = a => a.map(csvCell).join(",");
+async function buildBackup() {
+  await loadMembers(true);
+  const [sv, fn, ln] = await Promise.all([getDocs(collection(db, "savings")), getDocs(collection(db, "fines")), getDocs(collection(db, "loans"))]);
+  const asOf = today(), L = [];
+  L.push(csvRow(["BHa Njangi (Bamunka Njangi) BACKUP", "made on " + asOf]));
+  L.push("");
+  L.push(csvRow(["MEMBERS"]));
+  L.push(csvRow(["Account", "Name", "Phone", "Active", "Joined", "Saved by year"]));
+  S.members.forEach(x => L.push(csvRow([x.id, x.name, x.phone || "", x.active === false ? "No" : "Yes", x.joined || "", Object.entries(x.totals || {}).sort().map(([y, v]) => `${y}: ${v}`).join("; ")])));
+  L.push("");
+  L.push(csvRow(["SAVINGS"]));
+  L.push(csvRow(["Date", "Account", "Name", "Present", "Amount (FCFA)"]));
+  sv.docs.map(d => d.data()).sort((a, b) => (a.date + a.acct).localeCompare(b.date + b.acct)).forEach(x => L.push(csvRow([x.date, x.acct, x.name, x.present ? "Present" : "Absent", x.amount || 0])));
+  L.push("");
+  L.push(csvRow(["FINES"]));
+  L.push(csvRow(["Account", "Name", "Reason", "Date", "Fine (FCFA)", "Paid (FCFA)", "Left (FCFA)", "Payments"]));
+  fn.docs.map(d => d.data()).sort((a, b) => a.date.localeCompare(b.date)).forEach(f => L.push(csvRow([f.acct, f.name, f.reason, f.date, f.amount, paidSum(f.payments), fineBalance(f), (f.payments || []).map(p => `${p.date}: ${p.amount}`).join("; ")])));
+  L.push("");
+  L.push(csvRow(["LOANS"]));
+  L.push(csvRow(["Code", "Account", "Name", "Guarantor account", "Guarantor name", "Date given", "Loan (FCFA)", "Months", "Repay by", "Interest added (FCFA)", "Paid (FCFA)", "Owed today (FCFA)", "Reason", "Payments"]));
+  ln.docs.map(d => ({ code: d.id, ...d.data() })).sort((a, b) => a.date.localeCompare(b.date)).forEach(l => {
+    const st = loanState(l, asOf);
+    L.push(csvRow([l.code, l.acct, l.name, l.gAcct, l.gName, l.date, l.principal, l.months, l.due || "", st.charged, st.paid, st.owed, l.note || "", (l.payments || []).map(p => `${p.date}: ${p.amount}`).join("; ")]));
+  });
+  return { text: "\ufeff" + L.join("\r\n"), name: `njangi-backup-${asOf}.csv` };
+}
+function markBackup() { try { localStorage.setItem("bynBackup", today()); } catch (e) { /* ignore */ } }
+async function backupPanel(m) {
+  const last = lastBackup();
+  m.innerHTML = `<div class="card"><h3>Save a copy of all records</h3>
+    <p class="muted" style="margin:6px 0 12px">This makes one file with every member, saving, fine and loan. Open it in Excel or Google Sheets. Keep a copy safe, for example send it to yourself on WhatsApp, once every month.</p>
+    <p class="muted">Last backup made on this phone: <b>${last ? pretty(last) : "never"}</b></p>
+    <div class="actions"><button class="btn primary" id="bk">Save backup file</button><button class="btn" id="bs">Send by WhatsApp or another app</button></div></div>`;
+  const guard = async (btn, fn) => {
+    btn.disabled = true;
+    try { await fn(); } catch (e) { if (!e || e.name !== "AbortError") toast(friendly(e), true); }
+    btn.disabled = false;
+  };
+  $("#bk", m).onclick = e => guard(e.currentTarget, async () => {
+    const b = await buildBackup();
+    const url = URL.createObjectURL(new Blob([b.text], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = b.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    markBackup(); toast("Backup file saved on this phone.");
+    backupPanel(m);
+  });
+  $("#bs", m).onclick = e => guard(e.currentTarget, async () => {
+    const b = await buildBackup();
+    const file = new File([b.text], b.name, { type: "text/csv" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: b.name });
+      markBackup(); toast("Backup shared.");
+    } else {
+      const url = URL.createObjectURL(new Blob([b.text], { type: "text/csv;charset=utf-8" }));
+      const a = document.createElement("a"); a.href = url; a.download = b.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      markBackup(); toast("Sharing is not available here, so the file was saved on the phone instead.");
+    }
+    backupPanel(m);
+  });
+}
+
+/* ----- history: who changed what, and when ----- */
+async function historyPanel(m) {
+  const s = await getDocs(query(collection(db, "history"), orderBy("at", "desc"), limit(150)));
+  const list = s.docs.map(d => ({ id: d.id, ...d.data() }));
+  m.innerHTML = `<input id="hq" placeholder="Search the history" style="margin-bottom:12px"><div id="hl"></div>
+    <p class="note">Showing the latest ${list.length} changes. Entries cannot be edited or deleted from this app.</p>`;
+  const draw = () => {
+    const q = $("#hq", m).value.trim().toLowerCase();
+    const rows = list.filter(h => !q || String(h.text).toLowerCase().includes(q) || String(h.by).toLowerCase().includes(q));
+    $("#hl", m).innerHTML = `<div class="ledger">${rows.map(h => `<div class="line"><div class="l"><b>${esc(h.text)}</b><small>${esc(stamp(h.at))}, by ${esc(h.by || "unknown")}</small></div></div>`).join("") || '<div class="line"><div class="l muted">Nothing recorded yet.</div></div>'}</div>`;
+  };
+  $("#hq", m).oninput = draw;
+  draw();
+}
+</script>
+</body>
+</html>
+  
