@@ -1,2 +1,2 @@
 # BHa-njangi
-BHa -njangi is a savings booklet it only records dealing but doesn't passe through 
+BHa -njangi is a savings booklet it only records dealing but money doesn't passe through it
