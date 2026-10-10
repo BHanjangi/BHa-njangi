@@ -142,6 +142,7 @@ details.how summary{cursor:pointer;font-weight:700;color:var(--green);padding:8p
 .verdict{border-radius:10px;padding:10px 12px;margin-top:10px;font-weight:600}
 .verdict.good{background:var(--tint);color:var(--deep)}
 .verdict.bad{background:var(--redtint);color:#7a1710}
+.verdict.warn{background:#fff3d6;color:#6b4e00}
 .verdict p{margin:2px 0}
 .note{font-size:.88rem;color:var(--mute);margin-top:10px}
 hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
@@ -153,10 +154,23 @@ hr.sep{border:0;border-top:1px solid var(--line);margin:14px 0}
 <div id="app"><div class="loading" style="padding-top:30vh">Loading...</div></div>
 <div id="toast"></div>
 
+<script>
+// Safety net: if the app has not started after 12 seconds, say why instead of staying on "Loading..."
+window.__bhaErr = [];
+addEventListener("error", function (e) { window.__bhaErr.push(e.message || "error"); });
+addEventListener("unhandledrejection", function (e) { window.__bhaErr.push(String((e.reason && e.reason.message) || e.reason)); });
+setTimeout(function () {
+  var a = document.getElementById("app");
+  if (a && a.firstElementChild && a.firstElementChild.classList.contains("loading")) {
+    a.innerHTML = '<div style="padding:24px;font:16px/1.5 system-ui,sans-serif"><b>The app could not start.</b><p>1. Check your internet.<br>2. If you pasted the code, it may be cut off. The last line of the file must be &lt;/html&gt;.<br>3. Open the link in Chrome, not inside an editor preview.</p><p style="color:#777;font-size:13px">' + (window.__bhaErr.join(" | ") || "No error message") + '</p><button onclick="location.reload()" style="padding:12px 18px;font-size:16px">Try again</button></div>';
+  }
+}, 12000);
+</script>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where, orderBy, limit, writeBatch, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc as fsGetDoc, getDocs as fsGetDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, deleteDoc, collection, query, where, orderBy, limit, writeBatch, increment } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCKkk1hkBF4pPViUVZwc9hg_PRQ8X9qXF8",
@@ -173,12 +187,22 @@ const auth = getAuth(app);
 // enters is kept on the phone and sent by itself when the internet returns.
 let db;
 try {
-  if (typeof indexedDB === "undefined") throw new Error("no storage");
+  if (typeof indexedDB === "undefined" || !/^https?:$/.test(location.protocol)) throw new Error("no storage");
   db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 } catch (e) { db = getFirestore(app); }
 // A second, separate connection used only to create member logins,
 // so the secretary stays signed in while a new member is added.
 // It is made only when needed, so the app opens faster.
+// Speed: for members, a screen first opens from the copy saved on the phone (instant),
+// then the same screen is filled again with fresh data from the internet.
+let CACHE_PASS = false;
+async function getDocs(q) {
+  if (!CACHE_PASS) return fsGetDocs(q);
+  const r = await getDocsFromCache(q);
+  if (r.empty) throw new Error("nocache");
+  return r;
+}
+async function getDoc(ref) { return CACHE_PASS ? getDocFromCache(ref) : fsGetDoc(ref); }
 let _ca;
 const creatorAuth = () => _ca || (_ca = getAuth(initializeApp(firebaseConfig, "creator")));
 
@@ -311,8 +335,12 @@ async function refreshBadges() {
   try {
     const counts = {};
     if (S.role === "member") {
-      const s = await getDocs(query(collection(db, "loanRequests"), where("gAcct", "==", S.acct)));
-      counts.guarantee = s.docs.filter(d => d.data().status === "awaiting_guarantor").length;
+      const [s, n] = await Promise.all([
+        getDocs(query(collection(db, "loanRequests"), where("gAcct", "==", S.acct))),
+        getDocs(query(collection(db, "loanRequests"), where("fgAccts", "array-contains", S.acct))).catch(() => null)
+      ]);
+      counts.guarantee = s.docs.filter(d => d.data().status === "awaiting_guarantor").length
+        + (n ? n.docs.filter(d => ["awaiting_guarantor", "ready"].includes(d.data().status)).length : 0);
     } else {
       const [a, b] = await Promise.all([
         getDocs(query(collection(db, "loanRequests"), where("status", "==", "ready"))),
@@ -363,8 +391,48 @@ function info(title, body) {
   $("[data-x]", w).onclick = () => w.remove();
   return w;
 }
-function memberOptions() {
-  return `<datalist id="ml">${S.members.filter(m => m.active !== false).map(m => `<option value="${esc(m.id)} - ${esc(m.name)}"></option>`).join("")}</datalist>`;
+
+// A normal dropdown list of members. It works on every phone.
+// The value of each choice is the member's account number.
+function memberSelect(name, label, excludeId) {
+  const list = S.members.filter(m => m.active !== false && m.id !== excludeId);
+  if (!list.length) return `<p class="note" style="color:var(--red)">No members were found. Close this and try again.</p>`;
+  return `<label>${label}<select name="${name}" required><option value="">Choose a member</option>${list.map(m => `<option value="${esc(m.id)}">${esc(m.id)} - ${esc(m.name)}</option>`).join("")}</select></label>`;
+}
+
+/* ---------- loan rules: shortfall and collateral ---------- */
+const COLLATERAL_GAP = 30000;  // if the savings of borrower + guarantor miss the loan by more than this, collateral is needed
+const OLD_DEBT_MAX = 30000;    // a member who still owes more than this cannot ask for a new loan
+const coverMath = (c, amount) => {
+  const gap = Math.max(0, amount - c.bFree - c.gFree);
+  return { gap, mustCol: c.own > 0 || gap > COLLATERAL_GAP };
+};
+function colFields() {
+  return `<div id="cover" class="verdict good" style="margin:0 0 12px" hidden></div>
+    <div id="colbox" hidden>
+      <label>Collateral: what is it and where is it?<textarea name="col" style="min-height:70px" placeholder="e.g. A plot of land at Bamunka, near the market"></textarea></label>
+      <label>Estimated value of the collateral (FCFA)<input name="cv" inputmode="numeric"></label>
+    </div>`;
+}
+// Shows the cover and the shortfall while the form is filled, and opens the collateral box when needed.
+function wireCover(w, calc) {
+  const run = () => {
+    const amount = num($("[name=a]", w).value);
+    const g = $("[name=g]", w), mb = $("[name=m]", w);
+    const gId = g ? g.value : "", bId = mb ? mb.value : "";
+    const box = $("#cover", w), cb = $("#colbox", w);
+    if (!amount || !gId || (mb && !bId)) { box.hidden = true; cb.hidden = true; $("[name=col]", w).required = false; $("[name=cv]", w).required = false; return; }
+    const c = calc(amount, gId, bId), r = coverMath(c, amount);
+    box.hidden = false; box.className = "verdict " + (r.gap > 0 ? "bad" : "good"); box.style.margin = "0 0 12px";
+    box.innerHTML = `<p>Free savings of the borrower: ${money(c.bFree)}</p>
+      <p>${c.exact ? "Free savings of the guarantor" : "Guarantor's savings this year (estimate)"}: ${money(c.gFree)}</p>
+      <p>${r.gap ? "Short by " + money(r.gap) + "." : "Together they cover this loan."}</p>
+      ${r.mustCol ? `<p>${c.own > 0 ? "An earlier loan is not fully repaid, so collateral is required." : "The shortfall is more than " + money(COLLATERAL_GAP) + ", so collateral is required."}</p>` : ""}`;
+    cb.hidden = !r.mustCol;
+    $("[name=col]", w).required = r.mustCol; $("[name=cv]", w).required = r.mustCol;
+  };
+  ["a", "g", "m"].forEach(n => { const el = $(`[name=${n}]`, w); if (el) { el.oninput = run; el.onchange = run; } });
+  run();
 }
 function pickMember(v) {
   const first = String(v || "").trim().split(/\s+/)[0];
@@ -380,7 +448,7 @@ async function loadMembers(force) {
   if (!force && S.members.length && Date.now() - S.mAt < 30000) return;
   const s = await getDocs(collection(db, "members"));
   S.members = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.id.localeCompare(b.id));
-  S.mAt = Date.now();
+  S.mAt = CACHE_PASS ? 0 : Date.now();
 }
 
 /* ---------- login ---------- */
@@ -401,6 +469,7 @@ function loginView() {
         <label>Secretary email<input name="email" type="email" autocomplete="username"></label>
         <label>Password<input name="pass" type="password" autocomplete="current-password"></label>
       </div>
+      <label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" style="width:22px;min-height:22px;margin:0" onchange="document.querySelectorAll('input[name=pin],input[name=pass]').forEach(i=>i.type=this.checked?'text':'password')"> Show PIN or password</label>
       <button class="btn primary block">Log in</button>
     </form>
     <div style="text-align:center;margin-top:8px"><button class="link" id="swap" type="button">Secretary login</button><br><button class="link" id="help" type="button">Trouble logging in?</button></div>
@@ -454,12 +523,24 @@ onAuthStateChanged(auth, async user => {
     const local = em.split("@")[0];
     S.role = "member"; S.acct = local.toUpperCase().replace(/-\d+$/, "");
     S.ver = +((local.match(/-(\d+)$/) || [])[1] || 1);
-    try {
-      const d = await getDoc(doc(db, "members", S.acct));
+    const check = d => {
       if (!d.exists()) throw new Error("Your account is not registered yet. Please contact the secretary.");
       if (S.ver < (d.data().pinVer || 1)) throw new Error("Your PIN was reset. Please log in with your new PIN.");
       S.me = { id: d.id, ...d.data() };
-    } catch (e) { toast(friendly(e), true); await signOut(auth); return; }
+    };
+    let quick = false;
+    try { check(await Promise.race([getDocFromCache(doc(db, "members", S.acct)), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 1500))])); quick = true; } catch (e) { quick = false; }
+    if (quick) {
+      // open at once with the saved copy, and confirm with the server in the background
+      fsGetDoc(doc(db, "members", S.acct)).then(check).catch(async e => {
+        const c = (e && e.code) || "";
+        if (c.includes("unavailable") || c.includes("network") || c === "failed-precondition") return;
+        toast(friendly(e), true); await signOut(auth);
+      });
+    } else {
+      try { check(await fsGetDoc(doc(db, "members", S.acct))); }
+      catch (e) { toast(friendly(e), true); await signOut(auth); return; }
+    }
     S.tab = "home";
   } else { S.role = "secretary"; S.tab = "sunday"; }
   shell(); go(S.tab);
@@ -482,13 +563,28 @@ function shell() {
 async function go(tab) {
   S.tab = tab;
   $$(".nav button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
-  const m = document.createElement("div");
+  let m = document.createElement("div");
   m.innerHTML = '<div class="loading">Loading...</div>';
   $("#main").replaceChildren(m);
   window.scrollTo(0, 0);
-  refreshBadges();
+  // members: show the copy saved on the phone at once (but never wait more than 1.5 seconds for it)
+  if (S.role === "member" && ["home", "everyone", "fines", "loan", "guarantee", "report"].includes(tab)) {
+    CACHE_PASS = true;
+    let done = false;
+    try {
+      await Promise.race([VIEWS[tab](m).then(() => { done = true; }), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 1500))]);
+    } catch (e) { /* nothing saved yet, or too slow: load normally */ }
+    CACHE_PASS = false;
+    if (S.tab !== tab) return;
+    if (!done) {
+      m = document.createElement("div");
+      m.innerHTML = '<div class="loading">Loading...</div>';
+      $("#main").replaceChildren(m);
+    }
+  }
   try { await VIEWS[tab](m); }
   catch (e) { console.error(e); m.innerHTML = `<div class="card err">${esc(friendly(e))}</div>`; }
+  refreshBadges();
 }
 
 const VIEWS = {};
@@ -497,7 +593,7 @@ const VIEWS = {};
 VIEWS.home = async m => {
   const [sv, fn] = await Promise.all([
     getDocs(query(collection(db, "savings"), where("acct", "==", S.acct))),
-    getDocs(collection(db, "fines"))
+    getDocs(query(collection(db, "fines"), where("acct", "==", S.acct)))
   ]);
   const recs = sv.docs.map(d => d.data()).sort((a, b) => b.date.localeCompare(a.date));
   const owed = fn.docs.map(d => d.data()).filter(f => f.acct === S.acct).reduce((s, f) => s + fineBalance(f), 0);
@@ -530,7 +626,8 @@ VIEWS.home = async m => {
     $("#yr", m).onchange = e => { year = +e.target.value; draw(); };
     $("#chpin", m).onclick = () => modal("Change my PIN", `
       <label>Current PIN<input name="o" type="password" inputmode="numeric" required></label>
-      <label>New PIN (6 digits)<input name="n" type="password" inputmode="numeric" maxlength="6" required></label>`, async f => {
+      <label>New PIN (6 digits)<input name="n" type="password" inputmode="numeric" maxlength="6" required></label>
+      <label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" style="width:22px;min-height:22px;margin:0" onchange="document.querySelectorAll('.sheet input[name=o],.sheet input[name=n]').forEach(i=>i.type=this.checked?'text':'password')"> Show PIN</label>`, async f => {
       const n = String(f.get("n")).trim();
       if (!/^\d{6}$/.test(n)) throw new Error("The PIN must be exactly 6 digits.");
       await reauthenticateWithCredential(auth.currentUser, EmailAuthProvider.credential(auth.currentUser.email, String(f.get("o")).trim()));
@@ -597,7 +694,7 @@ VIEWS.fines = async m => {
     $$("[data-f]", m).forEach(b => b.onclick = () => { mine = b.dataset.f === "mine"; draw(); });
     if (!sec) return;
     $("#add", m).onclick = () => modal("Add a fine", `
-      <label>Member<input name="m" list="ml" required placeholder="Type name or number" autocomplete="off"></label>${memberOptions()}
+      ${memberSelect("m", "Member", "")}
       <label>Reason<input name="reason" required placeholder="e.g. Late to meeting"></label>
       <label>Amount (FCFA)<input name="amt" inputmode="numeric" required></label>
       <label>Date<input name="date" type="date" value="${today()}" required></label>`, async f => {
@@ -670,6 +767,8 @@ function loanCard(l, role) {
 }
 
 async function refreshMe() {
+  const hit = S.members.find(x => x.id === S.acct);
+  if (hit && Date.now() - S.mAt < 30000) { S.me = hit; return; }
   const d = await getDoc(doc(db, "members", S.acct));
   S.me = { id: d.id, ...d.data() };
 }
@@ -680,7 +779,7 @@ async function myLoanData() {
   ]);
   const mine = a.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
   const backing = b.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => y.at - x.at);
-  const fetchLoan = async r => { try { const d = await getDoc(doc(db, "loans", r.loanCode)); return { code: d.id, reqId: r.id, ...d.data() }; } catch (e) { return null; } };
+  const fetchLoan = async r => { try { const d = await getDoc(doc(db, "loans", r.loanCode)); return { code: d.id, reqId: r.id, ...d.data() }; } catch (e) { if (CACHE_PASS) throw e; return null; } };
   const [myLoans, backLoans] = await Promise.all([
     Promise.all(mine.filter(r => r.status === "approved" && r.loanCode).map(fetchLoan)),
     Promise.all(backing.filter(r => r.status === "approved" && r.loanCode).map(fetchLoan))
@@ -688,15 +787,33 @@ async function myLoanData() {
   return { mine, backing, myLoans: myLoans.filter(Boolean), backLoans: backLoans.filter(Boolean) };
 }
 
+async function myNotices() {
+  // Notices for the guarantor of an earlier loan that is not fully repaid.
+  // If the security rules are not updated yet, this shows nothing instead of failing.
+  try {
+    const q = await getDocs(query(collection(db, "loanRequests"), where("fgAccts", "array-contains", S.acct)));
+    return q.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.status === "awaiting_guarantor" || r.status === "ready").sort((x, y) => y.at - x.at);
+  } catch (e) { if (CACHE_PASS) throw e; return []; }
+}
+
 VIEWS.loan = async m => {
-  const [, , data] = await Promise.all([loadMembers(), refreshMe(), myLoanData()]);
+  const [, data] = await Promise.all([loadMembers(), myLoanData()]);
+  await refreshMe();
   const asOf = today();
   const fr = freeInfo(S.me, [...data.myLoans, ...data.backLoans], asOf, thisYear());
   const active = data.myLoans.filter(l => loanState(l, asOf).owed > 0);
   const cleared = data.myLoans.filter(l => loanState(l, asOf).owed <= 0);
   const openReq = data.mine.find(r => r.status === "awaiting_guarantor" || r.status === "ready");
   const closed = data.mine.filter(r => ["declined", "declined_guarantor", "cancelled"].includes(r.status)).slice(0, 5);
+  const canAsk = !openReq && fr.own <= OLD_DEBT_MAX;
   const line = (a, b, c) => `<div class="line"><div class="l"><b>${a}</b>${b ? `<small>${b}</small>` : ""}</div><span class="dots"></span><div class="r">${c}</div></div>`;
+  // the secretary's message that came with the approval of a loan
+  const noteFor = l => {
+    const r = data.mine.find(x => x.id === l.reqId); if (!r) return "";
+    const less = r.askedAmount && r.askedAmount > r.amount;
+    if (!less && !r.secretaryNote) return "";
+    return `<div class="card ${less ? "" : "ok"}"${less ? ' style="background:#fff3d6;border-color:#ecd28a"' : ""}>${less ? `<p><b>You asked for ${money(r.askedAmount)}. The secretary approved ${money(r.amount)}.</b></p>` : ""}${r.secretaryNote ? `<p><b>Message from the secretary:</b> ${esc(r.secretaryNote)}</p>` : ""}</div>`;
+  };
   m.innerHTML = `
     <div class="section-title" style="margin-top:0"><h2>My savings cover</h2></div>
     <div class="ledger">
@@ -705,41 +822,58 @@ VIEWS.loan = async m => {
       ${line("Backing for others", "as guarantor", money(fr.back))}
       ${line("Free savings", "what you can still borrow or back", money(fr.free))}
     </div>
-    ${active.length ? `<div class="section-title"><h2>My loan</h2></div>${active.map(l => loanCard(l, "borrower")).join("")}` : ""}
+    ${active.length ? `<div class="section-title"><h2>My loan</h2></div>${active.map(l => noteFor(l) + loanCard(l, "borrower")).join("")}` : ""}
     ${openReq ? `<div class="section-title"><h2>My request</h2></div><div class="card">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><h3>${money(openReq.amount)} for ${plural(openReq.months, "month")}</h3>${reqBadge(openReq.status)}</div>
       <p class="muted" style="margin-top:6px">Guarantor: ${esc(openReq.gName)}. ${openReq.status === "awaiting_guarantor" ? "Waiting for your guarantor to agree." : "Your guarantor agreed. Waiting for the secretary."}</p>
+      ${openReq.collateral ? `<p class="muted">Collateral: ${esc(openReq.collateral)} (estimated ${money(openReq.collateralValue)})</p>` : ""}
       <div class="actions"><button class="btn small danger" id="cancel">Cancel request</button></div></div>` : ""}
-    ${!openReq && !active.length ? '<button class="btn primary block" id="req" style="margin-top:16px">Request a loan</button>' : ""}
-    ${active.length && !openReq ? '<p class="note">You can ask for a new loan once this one is fully paid.</p>' : ""}
+    ${canAsk ? '<button class="btn primary block" id="req" style="margin-top:16px">Request a loan</button>' : ""}
+    ${canAsk && fr.own > 0 ? `<p class="note">You still owe ${money(fr.own)}. You can ask for a new loan, but you must offer collateral. The guarantor you choose is the one responsible for the new loan.</p>` : ""}
+    ${!openReq && fr.own > OLD_DEBT_MAX ? `<p class="note">You owe ${money(fr.own)}. You can ask for a new loan once what you owe is ${money(OLD_DEBT_MAX)} or less.</p>` : ""}
     ${closed.length ? `<div class="section-title"><h2>Earlier requests</h2></div>${closed.map(r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${money(r.amount)}</b>${reqBadge(r.status)}</div>
-      <p class="muted">${r.status === "declined_guarantor" ? "Your guarantor declined." : r.declineReason ? "Reason: " + esc(r.declineReason) : ""}</p></div>`).join("")}` : ""}
-    ${cleared.length ? `<details class="how"><summary>Past loans (${cleared.length})</summary>${cleared.map(l => loanCard(l, "borrower")).join("")}</details>` : ""}`;
+      ${r.status === "declined_guarantor" ? '<p class="muted">Your guarantor declined.</p>' : r.declineReason ? `<div class="card err" style="margin:10px 0 0"><b>Message from the secretary:</b> ${esc(r.declineReason)}</div>` : ""}</div>`).join("")}` : ""}
+    ${cleared.length ? `<details class="how"><summary>Past loans (${cleared.length})</summary>${cleared.map(l => noteFor(l) + loanCard(l, "borrower")).join("")}</details>` : ""}`;
   const cancel = $("#cancel", m);
   if (cancel) cancel.onclick = async () => {
     if (!confirm("Cancel this loan request?")) return;
     try { await settle(updateDoc(doc(db, "loanRequests", openReq.id), { status: "cancelled" })); toast("Request cancelled."); go("loan"); }
     catch (e) { toast(friendly(e), true); }
   };
+  // the guarantor's savings this year are visible to every member; his debts are not, so this is an estimate
+  const calcMember = (amount, gId) => {
+    const g = S.members.find(x => x.id === gId);
+    return { bFree: fr.free, gFree: g ? ((g.totals || {})[thisYear()] || 0) : 0, own: fr.own, exact: false };
+  };
   const req = $("#req", m);
-  if (req) req.onclick = () => modal("Request a loan", `
-    <p class="muted" style="margin-bottom:12px">Your free savings are ${money(fr.free)}. Your guarantor must agree, and their savings are checked too.</p>
-    <label>Amount (FCFA)<input name="a" inputmode="numeric" required></label>
-    <label>Months to repay<input name="mo" inputmode="numeric" value="3" required></label>
-    <label>Reason<input name="why" required></label>
-    <label>Guarantor<input name="g" list="ml" required autocomplete="off" placeholder="Type name or number"></label>${memberOptions()}`, async f => {
-    const amount = num(f.get("a")), months = Math.round(num(f.get("mo"))), g = pickMember(f.get("g"));
-    if (amount < 1000) throw new Error("The smallest loan is 1 000 FCFA.");
-    if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
-    if (!g) throw new Error("Choose your guarantor from the list.");
-    if (g.id === S.acct) throw new Error("You cannot guarantee your own loan.");
-    await settle(setDoc(doc(collection(db, "loanRequests")), { acct: S.acct, name: S.me.name, gAcct: g.id, gName: g.name, amount, months, reason: String(f.get("why")).trim(), date: today(), at: Date.now(), status: "awaiting_guarantor", declineReason: "", loanCode: "", bFree: fr.free, by: "member" }));
-    toast("Request sent to your guarantor."); go("loan"); refreshBadges();
-  }, "Send request");
+  if (req) req.onclick = () => {
+    const w = modal("Request a loan", `
+      <p class="muted" style="margin-bottom:12px">Your free savings are ${money(fr.free)}. Your guarantor must agree, and the secretary makes the final decision.</p>
+      <label>Amount (FCFA)<input name="a" inputmode="numeric" required></label>
+      <label>Months to repay<input name="mo" inputmode="numeric" value="3" required></label>
+      <label>Reason<input name="why" required></label>
+      ${memberSelect("g", "Guarantor", S.acct)}
+      ${colFields()}`, async f => {
+      const amount = num(f.get("a")), months = Math.round(num(f.get("mo"))), g = pickMember(f.get("g"));
+      if (amount < 1000) throw new Error("The smallest loan is 1 000 FCFA.");
+      if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
+      if (!g) throw new Error("Choose your guarantor from the list.");
+      if (g.id === S.acct) throw new Error("You cannot guarantee your own loan.");
+      if (fr.own > OLD_DEBT_MAX) throw new Error(`You owe ${money(fr.own)}. You can ask again once it is ${money(OLD_DEBT_MAX)} or less.`);
+      const c = calcMember(amount, g.id), cm = coverMath(c, amount);
+      const col = String(f.get("col") || "").trim(), cv = num(f.get("cv"));
+      if (cm.mustCol && (!col || cv <= 0)) throw new Error("Please describe your collateral and give its estimated value.");
+      // the guarantors of earlier loans that are not fully repaid only get a notice
+      const fgAccts = [...new Set(active.map(l => l.gAcct).filter(x => x && x !== g.id && x !== S.acct))];
+      await settle(setDoc(doc(collection(db, "loanRequests")), { acct: S.acct, name: S.me.name, gAcct: g.id, gName: g.name, amount, months, reason: String(f.get("why")).trim(), date: today(), at: Date.now(), status: "awaiting_guarantor", declineReason: "", loanCode: "", bFree: fr.free, gFree: c.gFree, shortfall: cm.gap, collateral: col, collateralValue: col ? cv : 0, oldOwed: fr.own, fgAccts, by: "member" }));
+      toast("Request sent to your guarantor."); go("loan"); refreshBadges();
+    }, "Send request");
+    wireCover(w, calcMember);
+  };
 };
 
 VIEWS.guarantee = async m => {
-  const [, data] = await Promise.all([refreshMe(), myLoanData()]);
+  const [, data, notices] = await Promise.all([refreshMe(), myLoanData(), myNotices()]);
   const asOf = today();
   const fr = freeInfo(S.me, [...data.myLoans, ...data.backLoans], asOf, thisYear());
   const promised = data.backing.filter(r => r.status === "ready").reduce((s, r) => s + (+r.amount || 0), 0);
@@ -748,24 +882,36 @@ VIEWS.guarantee = async m => {
   const ready = data.backing.filter(r => r.status === "ready");
   const live = data.backLoans.filter(l => loanState(l, asOf).owed > 0);
   const done = data.backLoans.filter(l => loanState(l, asOf).owed <= 0);
+  const missing = r => Math.max(0, Math.max(0, (+r.amount || 0) - (+r.bFree || 0)) - myFree);
+  const reducedFor = l => { const r = data.backing.find(x => x.loanCode === l.code); return r && r.askedAmount && r.askedAmount > r.amount ? `<div class="card" style="background:#fff3d6;border-color:#ecd28a"><b>You agreed to back ${money(r.askedAmount)}. The secretary approved ${money(r.amount)}.</b>${r.secretaryNote ? `<p class="muted">Reason: ${esc(r.secretaryNote)}</p>` : ""}</div>` : ""; };
   m.innerHTML = `
     <div class="card"><h3>Your free savings: ${money(myFree)}</h3>
       <p class="muted">What you saved this year, minus what you owe, minus what you already back${promised ? ", minus loans you agreed to back that are waiting for approval" : ""}.</p></div>
+    ${notices.length ? `<div class="section-title"><h2>For your information</h2></div>${notices.map(r => `<div class="card ok"><p><b>${esc(r.name)}</b> has asked for a new loan of <b>${money(r.amount)}</b>. The first loan that you back is not fully repaid yet${r.oldOwed ? " (" + money(r.oldOwed) + " was still owed when the request was made)" : ""}.</p>
+      <p class="muted">You do not need to do anything. You are not responsible for the new loan. ${esc(r.gName)} is the guarantor for it.</p></div>`).join("")}` : ""}
     ${awaiting.length || live.length || ready.length ? `<div class="card ok"><b>Please remember.</b> A guarantor shares the responsibility if the borrower does not repay. The njangi will tell you how any gap is covered. Interest grows each month the loan stays unpaid, so the amount you back grows too.</div>` : ""}
     ${awaiting.length ? `<div class="section-title"><h2>Asking for your answer</h2></div>${awaiting.map(r => {
-      const need = Math.max(0, (+r.amount || 0) - (+r.bFree || 0)), ok = myFree >= need;
+      const gap = missing(r);
       return `<div class="card"><p><b>${esc(r.name)}</b> asks you to stand as guarantor for <b>${money(r.amount)}</b>, to be repaid within ${plural(r.months, "month")}.</p>
         <p class="muted">Reason: ${esc(r.reason)}</p>
-        <p class="muted">Their own free savings cover ${money(r.bFree || 0)}. Your free savings must cover the other ${money(need)}.</p>
-        ${ok ? "" : '<p class="note" style="color:var(--red)">Your free savings are too low to back this loan, so you cannot agree.</p>'}
-        <div class="actions"><button class="btn small primary" data-agree="${r.id}" ${ok ? "" : "disabled"}>I agree</button><button class="btn small danger" data-no="${r.id}">I decline</button></div></div>`;
+        <p class="muted">Their own free savings cover ${money(r.bFree || 0)}. Your free savings are ${money(myFree)}.</p>
+        ${gap ? `<p class="note" style="color:var(--red)">Together you do not cover the loan. ${money(gap)} is missing. If you agree, you take responsibility for this loan. The secretary makes the final decision.</p>` : ""}
+        ${r.collateral ? `<p class="muted">Collateral offered: ${esc(r.collateral)} (estimated ${money(r.collateralValue)})</p>` : '<p class="muted">No collateral was offered.</p>'}
+        ${r.oldOwed ? `<p class="note">This member still owes ${money(r.oldOwed)} on an earlier loan, which has another guarantor.</p>` : ""}
+        <p class="note">Once you agree, you cannot take it back.</p>
+        <div class="actions"><button class="btn small primary" data-agree="${r.id}">I agree</button><button class="btn small danger" data-no="${r.id}">I decline</button></div></div>`;
     }).join("")}` : ""}
-    ${ready.length ? `<div class="section-title"><h2>You agreed</h2></div>${ready.map(r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(r.name)}</b>${reqBadge(r.status)}</div><p class="muted">${money(r.amount)} for ${plural(r.months, "month")}. Waiting for the secretary to approve.</p></div>`).join("")}` : ""}
-    ${live.length ? `<div class="section-title"><h2>Loans you back</h2></div>${live.map(l => loanCard(l, "guarantor")).join("")}` : ""}
-    ${!awaiting.length && !ready.length && !live.length ? '<p class="muted" style="margin-top:14px">You are not backing any loan right now.</p>' : ""}
-    ${done.length ? `<details class="how"><summary>Loans you backed that are cleared (${done.length})</summary>${done.map(l => loanCard(l, "guarantor")).join("")}</details>` : ""}`;
+    ${ready.length ? `<div class="section-title"><h2>You agreed</h2></div>${ready.map(r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(r.name)}</b>${reqBadge(r.status)}</div><p class="muted">${money(r.amount)} for ${plural(r.months, "month")}. Waiting for the secretary to decide.</p></div>`).join("")}` : ""}
+    ${live.length ? `<div class="section-title"><h2>Loans you back</h2></div>${live.map(l => reducedFor(l) + loanCard(l, "guarantor")).join("")}` : ""}
+    ${!awaiting.length && !ready.length && !live.length && !notices.length ? '<p class="muted" style="margin-top:14px">You are not backing any loan right now.</p>' : ""}
+    ${done.length ? `<details class="how"><summary>Loans you backed that are cleared (${done.length})</summary>${done.map(l => reducedFor(l) + loanCard(l, "guarantor")).join("")}</details>` : ""}`;
   $$("[data-agree]", m).forEach(b => b.onclick = async () => {
-    try { await settle(updateDoc(doc(db, "loanRequests", b.dataset.agree), { status: "ready" })); toast("Thank you. The secretary will review it."); go("guarantee"); }
+    const r = data.backing.find(x => x.id === b.dataset.agree);
+    const text = missing(r) > 0
+      ? "Your free savings are not enough to cover what is missing. If the borrower does not repay, you are responsible. Do you still agree? You cannot take it back."
+      : "Do you agree to be this member's guarantor? You cannot take it back.";
+    if (!confirm(text)) return;
+    try { await settle(updateDoc(doc(db, "loanRequests", r.id), { status: "ready" })); toast("Thank you. The secretary will decide."); go("guarantee"); }
     catch (e) { toast(friendly(e), true); }
   });
   $$("[data-no]", m).forEach(b => b.onclick = async () => {
@@ -961,24 +1107,35 @@ function assess(r, amount, loans, asOf, year) {
   const bf = freeInfo(b, loans, asOf, year), gf = freeInfo(g, loans, asOf, year);
   const saved = S.members.reduce((s, x) => s + ((x.totals || {})[year] || 0), 0);
   const out = loans.reduce((s, l) => s + loanState(l, asOf).principal, 0);
-  const why = [];
-  if (!b || !g) why.push("The borrower or the guarantor was not found.");
-  if (r.acct === r.gAcct) why.push("A member cannot guarantee their own loan.");
-  if (bf.own > 0) why.push(`${r.name} still owes ${money(bf.own)} on another loan.`);
-  if (amount <= 0) why.push("Enter the amount to approve.");
-  else if (bf.free + gf.free < amount) why.push(`Together their free savings are ${money(bf.free + gf.free)}. That is less than ${money(amount)}.`);
-  return { bf, gf, cover: bf.free + gf.free, cash: saved - out, ok: why.length === 0, why };
+  const block = [], warn = [];
+  // only real mistakes stop the secretary; everything else is a warning and the secretary decides
+  if (!b || !g) block.push("The borrower or the guarantor was not found.");
+  if (r.acct === r.gAcct) block.push("A member cannot guarantee their own loan.");
+  if (amount <= 0) block.push("Enter the amount to approve.");
+  const cover = bf.free + gf.free, gap = Math.max(0, amount - cover), mustCol = bf.own > 0 || gap > COLLATERAL_GAP;
+  const olds = loans.filter(l => l.acct === r.acct && loanState(l, asOf).owed > 0);
+  if (bf.own > 0) warn.push(`${r.name} still owes ${money(bf.own)} on an earlier loan (guarantor: ${olds.map(l => l.gName || "none").join(", ")}). That guarantor is not responsible for this new loan.`);
+  if (bf.own > OLD_DEBT_MAX) warn.push(`That is more than ${money(OLD_DEBT_MAX)}, the limit for asking for a new loan.`);
+  if (amount > 0 && gap > 0) warn.push(`Together their free savings are ${money(cover)}. The shortfall is ${money(gap)}.`);
+  if (amount > 0 && mustCol && !(r.collateral && +r.collateralValue > 0)) warn.push("Collateral is required for this loan, but none was given.");
+  return { bf, gf, cover, gap, mustCol, olds, cash: saved - out, ok: block.length === 0, block, warn };
 }
 function assessPanel(r, a, amount) {
-  const row = (t, s, v) => `<div class="line"><div class="l"><b>${t}</b><small>${s}</small></div><span class="dots"></span><div class="r">${v}</div></div>`;
+  const row = (t, s, v, red) => `<div class="line"><div class="l"><b>${t}</b><small>${s}</small></div><span class="dots"></span><div class="r"${red ? ' style="color:var(--red)"' : ""}>${v}</div></div>`;
+  const over = amount > a.cash;
+  const kind = !a.ok ? "bad" : (a.warn.length || over) ? "warn" : "good";
   return `<div class="ledger">
     ${row(esc(r.name) + " (borrower)", `saved ${money(a.bf.saved)}, owes ${money(a.bf.own)}, backs ${money(a.bf.back)}`, money(a.bf.free) + "<small>free</small>")}
     ${row(esc(r.gName) + " (guarantor)", `saved ${money(a.gf.saved)}, owes ${money(a.gf.own)}, backs ${money(a.gf.back)}`, money(a.gf.free) + "<small>free</small>")}
-    ${row("Cover together", "must be at least the loan", money(a.cover))}
+    ${row("Cover together", "free savings of both", money(a.cover))}
+    ${a.gap > 0 ? row("Shortfall", "not covered by their savings", money(a.gap), true) : ""}
+    ${a.bf.own > 0 ? row("Earlier loan not repaid", "guarantor: " + esc(a.olds.map(l => l.gName || "none").join(", ")), money(a.bf.own), true) : ""}
+    ${r.collateral ? row("Collateral offered", esc(r.collateral), money(r.collateralValue)) : ""}
     ${row("Cash available to lend", "savings this year minus loans out", money(a.cash))}
   </div>
-  <div class="verdict ${a.ok ? "good" : "bad"}">${a.ok ? "The safety check passes." : a.why.map(w => `<p>${esc(w)}</p>`).join("")}
-  ${a.ok && amount > a.cash ? "<p>Warning: this is more than the cash available to lend.</p>" : ""}</div>`;
+  <div class="verdict ${kind}">${!a.ok ? a.block.map(w => `<p>${esc(w)}</p>`).join("")
+    : (a.warn.length || over) ? `<p>You decide. Please read:</p>${a.warn.map(w => `<p>${esc(w)}</p>`).join("")}${over ? "<p>This is more than the cash available to lend.</p>" : ""}`
+    : "The safety check passes."}</div>`;
 }
 
 VIEWS.loans = async m => {
@@ -988,7 +1145,12 @@ VIEWS.loans = async m => {
   const reqCard = r => `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><h3>${esc(r.name)}</h3><p class="muted">${esc(r.acct)}, asked on ${pretty(r.date)}${r.by === "secretary" ? ", recorded by you" : ""}</p></div>${reqBadge(r.status)}</div>
     <p style="margin-top:8px"><b>${money(r.amount)}</b> over ${plural(r.months, "month")}</p>
     <p class="muted">Guarantor: ${esc(r.gName)} (${esc(r.gAcct)})</p><p class="muted">Reason: ${esc(r.reason)}</p>
-    ${r.declineReason ? `<p class="note">Decline reason: ${esc(r.declineReason)}</p>` : ""}
+    ${r.shortfall ? `<p class="muted">Shortfall when asked: ${money(r.shortfall)}</p>` : ""}
+    ${r.collateral ? `<p class="muted">Collateral: ${esc(r.collateral)} (estimated ${money(r.collateralValue)})</p>` : ""}
+    ${r.oldOwed ? `<p class="muted">Earlier loan still owed when asked: ${money(r.oldOwed)}</p>` : ""}
+    ${r.declineReason ? `<p class="note">Your reason for declining: ${esc(r.declineReason)}</p>` : ""}
+    ${r.askedAmount && r.askedAmount > r.amount ? `<p class="note">Asked ${money(r.askedAmount)}, you approved ${money(r.amount)}.</p>` : ""}
+    ${r.secretaryNote ? `<p class="note">Your message with the approval: ${esc(r.secretaryNote)}</p>` : ""}
     ${r.status === "awaiting_guarantor" ? `<div class="actions"><button class="btn small" data-gok="${r.id}">Guarantor agreed in person</button><button class="btn small danger" data-dec="${r.id}">Decline</button></div>` : ""}
     ${r.status === "ready" ? `<div class="actions"><button class="btn small primary" data-rev="${r.id}">Review and approve</button><button class="btn small danger" data-dec="${r.id}">Decline</button></div>` : ""}</div>`;
 
@@ -999,44 +1161,59 @@ VIEWS.loans = async m => {
     const cleared = all.filter(x => x.st.owed <= 0);
     const owedTotal = active.reduce((s, x) => s + x.st.owed, 0);
     const ready = reqs.filter(r => r.status === "ready"), waiting = reqs.filter(r => r.status === "awaiting_guarantor");
-    const closed = reqs.filter(r => ["declined", "declined_guarantor", "cancelled"].includes(r.status)).slice(0, 10);
+    const closed = reqs.filter(r => ["declined", "declined_guarantor", "cancelled", "approved"].includes(r.status)).slice(0, 10);
     m.innerHTML = `<button class="btn primary block" id="add" style="margin-bottom:14px">Record a request for a member</button>
       <div class="stats"><div class="stat"><b>${active.length}</b><span>Loans running</span></div><div class="stat red"><b>${money(owedTotal)}</b><span>Owed today, with interest</span></div></div>
-      <div class="section-title"><h2>Ready for approval</h2><span class="muted">${ready.length}</span></div>
+      <div class="section-title"><h2>Inbox: ready for your decision</h2><span class="muted">${ready.length}</span></div>
+      <p class="muted" style="margin:-4px 2px 10px">Approve or decline each request. You can write a message, and the member will read it in the app.</p>
       ${ready.map(reqCard).join("") || '<p class="muted">Nothing is waiting for you.</p>'}
       <div class="section-title"><h2>Waiting for a guarantor</h2><span class="muted">${waiting.length}</span></div>
       ${waiting.map(reqCard).join("") || '<p class="muted">None.</p>'}
       <div class="section-title"><h2>Loans running</h2></div>
       ${active.map(x => loanCard(x.l, "secretary")).join("") || '<p class="muted">No loans are running.</p>'}
       ${cleared.length ? `<details class="how"><summary>Cleared loans (${cleared.length})</summary>${cleared.map(x => loanCard(x.l, "secretary")).join("")}</details>` : ""}
-      ${closed.length ? `<details class="how"><summary>Closed requests (${closed.length})</summary>${closed.map(reqCard).join("")}</details>` : ""}`;
+      ${closed.length ? `<details class="how"><summary>Decided requests (${closed.length})</summary>${closed.map(reqCard).join("")}</details>` : ""}`;
     wire();
   };
 
+  // the secretary sees exact savings and debts for both members
+  const calcSec = (amount, gId, bId) => {
+    const bm = pickMember(bId), gm = pickMember(gId);
+    const bf = freeInfo(bm, loans, today(), thisYear()), gf = freeInfo(gm, loans, today(), thisYear());
+    return { bFree: bf.free, gFree: gf.free, own: bf.own, exact: true };
+  };
+
   const wire = () => {
-    $("#add", m).onclick = () => modal("Record a request", `
-      <label>Borrower<input name="m" list="ml" required autocomplete="off" placeholder="Type name or number"></label>
-      <label>Guarantor<input name="g" list="ml" required autocomplete="off" placeholder="Type name or number"></label>${memberOptions()}
-      <label>Amount (FCFA)<input name="a" inputmode="numeric" required></label>
-      <label>Months to repay<input name="mo" inputmode="numeric" value="3" required></label>
-      <label>Reason<input name="why" required></label>`, async f => {
-      const b = pickMember(f.get("m")), g = pickMember(f.get("g"));
-      const amount = num(f.get("a")), months = Math.round(num(f.get("mo")));
-      if (!b || !g) throw new Error("Choose the borrower and the guarantor from the list.");
-      if (b.id === g.id) throw new Error("A member cannot guarantee their own loan.");
-      if (amount < 1000) throw new Error("The smallest loan is 1 000 FCFA.");
-      if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
-      if (reqs.some(r => r.acct === b.id && (r.status === "awaiting_guarantor" || r.status === "ready"))) throw new Error(`${b.name} already has an open request.`);
-      const fr = freeInfo(b, loans, today(), thisYear());
-      if (fr.own > 0) throw new Error(`${b.name} still owes ${money(fr.own)} on another loan.`);
-      const data = { acct: b.id, name: b.name, gAcct: g.id, gName: g.name, amount, months, reason: String(f.get("why")).trim(), date: today(), at: Date.now(), status: "awaiting_guarantor", declineReason: "", loanCode: "", bFree: fr.free, by: "secretary" };
-      const ref = doc(collection(db, "loanRequests"));
-      const bt = writeBatch(db);
-      bt.set(ref, data);
-      bt.set(histRef(), histData("loan", `Loan request recorded: ${b.name} (${b.id}), ${money(amount)}, ${plural(months, "month")}, guarantor ${g.name} (${g.id})`));
-      const r = await settle(bt.commit());
-      reqs.unshift({ id: ref.id, ...data }); draw(); refreshBadges(); sent("Request recorded.", r);
-    }, "Record request");
+    $("#add", m).onclick = () => {
+      const w = modal("Record a request", `
+        ${memberSelect("m", "Borrower", "")}
+        ${memberSelect("g", "Guarantor", "")}
+        <label>Amount (FCFA)<input name="a" inputmode="numeric" required></label>
+        <label>Months to repay<input name="mo" inputmode="numeric" value="3" required></label>
+        <label>Reason<input name="why" required></label>
+        ${colFields()}`, async f => {
+        const b = pickMember(f.get("m")), g = pickMember(f.get("g"));
+        const amount = num(f.get("a")), months = Math.round(num(f.get("mo")));
+        if (!b || !g) throw new Error("Choose the borrower and the guarantor from the list.");
+        if (b.id === g.id) throw new Error("A member cannot guarantee their own loan.");
+        if (amount < 1000) throw new Error("The smallest loan is 1 000 FCFA.");
+        if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
+        if (reqs.some(r => r.acct === b.id && (r.status === "awaiting_guarantor" || r.status === "ready"))) throw new Error(`${b.name} already has an open request.`);
+        const c = calcSec(amount, g.id, b.id), cm = coverMath(c, amount);
+        if (c.own > OLD_DEBT_MAX) throw new Error(`${b.name} still owes ${money(c.own)}. A new loan is possible only when what is owed is ${money(OLD_DEBT_MAX)} or less.`);
+        const col = String(f.get("col") || "").trim(), cv = num(f.get("cv"));
+        if (cm.mustCol && (!col || cv <= 0)) throw new Error("Collateral is required. Describe it and give its estimated value.");
+        const fgAccts = [...new Set(loans.filter(l => l.acct === b.id && loanState(l, today()).owed > 0).map(l => l.gAcct).filter(x => x && x !== g.id))];
+        const data = { acct: b.id, name: b.name, gAcct: g.id, gName: g.name, amount, months, reason: String(f.get("why")).trim(), date: today(), at: Date.now(), status: "awaiting_guarantor", declineReason: "", loanCode: "", bFree: c.bFree, gFree: c.gFree, shortfall: cm.gap, collateral: col, collateralValue: col ? cv : 0, oldOwed: c.own, fgAccts, by: "secretary" };
+        const ref = doc(collection(db, "loanRequests"));
+        const bt = writeBatch(db);
+        bt.set(ref, data);
+        bt.set(histRef(), histData("loan", `Loan request recorded: ${b.name} (${b.id}), ${money(amount)}, ${plural(months, "month")}, guarantor ${g.name} (${g.id})${col ? ", collateral: " + col + " (" + money(cv) + ")" : ""}`));
+        const r = await settle(bt.commit());
+        reqs.unshift({ id: ref.id, ...data }); draw(); refreshBadges(); sent("Request recorded.", r);
+      }, "Record request");
+      wireCover(w, calcSec);
+    };
 
     $$("[data-gok]", m).forEach(b => b.onclick = async () => {
       if (!confirm("Confirm that the guarantor agreed in person?")) return;
@@ -1052,14 +1229,14 @@ VIEWS.loans = async m => {
 
     $$("[data-dec]", m).forEach(b => b.onclick = () => {
       const r = reqs.find(x => x.id === b.dataset.dec);
-      modal("Decline request", `<p class="muted">${esc(r.name)} asked for ${money(r.amount)}.</p><label>Reason the member will read<textarea name="why" required></textarea></label>`, async f => {
+      modal("Decline request", `<p class="muted">${esc(r.name)} asked for ${money(r.amount)}.</p><label>Your reason. The member will read it in the app.<textarea name="why" required></textarea></label>`, async f => {
         const declineReason = String(f.get("why")).trim();
         const bt = writeBatch(db);
         bt.update(doc(db, "loanRequests", r.id), { status: "declined", declineReason });
         bt.set(histRef(), histData("loan", `Loan request declined: ${r.name} (${r.acct}), ${money(r.amount)}. Reason: ${declineReason}`));
         const x = await settle(bt.commit());
-        r.status = "declined"; r.declineReason = declineReason; draw(); refreshBadges(); sent("Request declined.", x);
-      }, "Decline request");
+        r.status = "declined"; r.declineReason = declineReason; draw(); refreshBadges(); sent("Request declined. The member will see your reason.", x);
+      }, "Decline and send");
     });
 
     $$("[data-rev]", m).forEach(b => b.onclick = () => {
@@ -1068,26 +1245,44 @@ VIEWS.loans = async m => {
         <p><b>${esc(r.name)}</b> asks for <b>${money(r.amount)}</b> over ${plural(r.months, "month")}.</p>
         <p class="muted" style="margin-bottom:10px">Reason: ${esc(r.reason)}</p>
         <div id="asm"></div>
-        <label style="margin-top:14px">Amount to approve (FCFA)<input name="a" inputmode="numeric" value="${r.amount}" required></label>
+        <div class="card ok" style="margin:14px 0 12px"><b>Your decision</b>
+          <p class="muted">Approve the full amount, or approve a smaller amount and give your reason. To refuse completely, close this and tap Decline.</p></div>
+        <label>Amount to approve (FCFA). Requested: ${money(r.amount)}<input name="a" inputmode="numeric" value="${r.amount}" required></label>
+        <p id="lessnote" class="note" style="margin:-6px 0 12px" hidden></p>
         <label>Months to repay<input name="mo" inputmode="numeric" value="${r.months}" required></label>
         <label>Date given<input name="d" type="date" value="${today()}" required></label>
+        <label id="notelbl">Message to the member (optional)<textarea name="note" style="min-height:70px" placeholder="e.g. Please collect the money after the meeting."></textarea></label>
         <p class="note" style="margin-top:0">Interest is 5% of everything owed, added on the last Sunday of each month.</p>`, async f => {
         const amount = num(f.get("a")), months = Math.round(num(f.get("mo"))), date = f.get("d");
+        const note = String(f.get("note") || "").trim();
         const a = assess(r, amount, loans, today(), year);
-        if (!a.ok) throw new Error(a.why[0]);
+        if (!a.ok) throw new Error(a.block[0]);
+        if (amount > r.amount) throw new Error(`You cannot approve more than the ${money(r.amount)} that was requested.`);
+        if (amount < r.amount && !note) throw new Error("Please write the reason for approving a smaller amount. The member will read it.");
         if (months < 1 || months > 24) throw new Error("Months must be between 1 and 24.");
         const code = loanCode();
         const data = { acct: r.acct, name: r.name, gAcct: r.gAcct, gName: r.gName, principal: amount, date, months, due: addMonths(date, months), reqId: r.id, note: r.reason, payments: [], rate: 5 };
         const bt = writeBatch(db);
         bt.set(doc(db, "loans", code), data);
-        bt.update(doc(db, "loanRequests", r.id), { status: "approved", loanCode: code, amount });
-        bt.set(histRef(), histData("loan", `Loan approved: ${r.name} (${r.acct}), ${money(amount)}, ${plural(months, "month")}, guarantor ${r.gName} (${r.gAcct}), code ${code}`));
+        bt.update(doc(db, "loanRequests", r.id), { status: "approved", loanCode: code, amount, askedAmount: r.amount, secretaryNote: note });
+        bt.set(histRef(), histData("loan", `${amount < r.amount ? "Loan approved for LESS" : "Loan approved"}: ${r.name} (${r.acct}), ${money(amount)}${amount < r.amount ? " (requested " + money(r.amount) + ")" : ""}, ${plural(months, "month")}, guarantor ${r.gName} (${r.gAcct}), code ${code}${r.collateral ? ". Collateral: " + r.collateral + " (" + money(r.collateralValue) + ")" : ""}${note ? ". Message: " + note : ""}`));
         const x = await settle(bt.commit());
-        loans.push({ code, ...data }); r.status = "approved"; r.loanCode = code; r.amount = amount;
+        loans.push({ code, ...data }); r.askedAmount = r.amount; r.status = "approved"; r.loanCode = code; r.amount = amount; r.secretaryNote = note;
         draw(); refreshBadges();
-        info("Loan approved", `<p><b>${esc(r.name)}</b> and the guarantor <b>${esc(r.gName)}</b> can now see this loan in the app. The loan code is:</p><div class="cred"><b>${code}</b></div>${x === "later" ? '<p class="muted">Saved on this phone. It will send when the internet returns.</p>' : ""}`);
+        info("Loan approved", `<p><b>${esc(r.name)}</b> and the guarantor <b>${esc(r.gName)}</b> can now see this loan in the app${note ? ", with your message" : ""}. The loan code is:</p><div class="cred"><b>${code}</b></div>${r.askedAmount > amount ? `<p class="muted">You approved ${money(amount)} instead of the ${money(r.askedAmount)} requested. The member and the guarantor will see your reason.</p>` : ""}${x === "later" ? '<p class="muted">Saved on this phone. It will send when the internet returns.</p>' : ""}`);
       }, "Approve loan");
-      const show = () => { const amt = num($("[name=a]", w).value); $("#asm", w).innerHTML = assessPanel(r, assess(r, amt, loans, today(), year), amt); };
+      const show = () => {
+        const amt = num($("[name=a]", w).value);
+        $("#asm", w).innerHTML = assessPanel(r, assess(r, amt, loans, today(), year), amt);
+        const less = amt > 0 && amt < r.amount, more = amt > r.amount;
+        const ln = $("#lessnote", w);
+        ln.hidden = !(less || more);
+        ln.style.color = more ? "var(--red)" : "";
+        ln.textContent = more ? `You cannot approve more than the ${money(r.amount)} that was requested.` : less ? `This is ${money(r.amount - amt)} less than requested. Please write your reason below. The member and the guarantor will see it.` : "";
+        $("[name=note]", w).required = less;
+        $("#notelbl", w).firstChild.textContent = less ? "Reason for approving less (required). The member will read it" : "Message to the member (optional)";
+        $("button.primary", w).textContent = less ? "Approve smaller amount" : "Approve loan";
+      };
       $("[name=a]", w).oninput = show; show();
     });
 
@@ -1300,4 +1495,3 @@ async function historyPanel(m) {
 </script>
 </body>
 </html>
-  
